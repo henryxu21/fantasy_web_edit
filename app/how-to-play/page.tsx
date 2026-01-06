@@ -57,7 +57,7 @@ const steps = [
 **关注伤病**: 受伤球员放到 IR 位，从弃用区找替补
 **弃用区淘金**: 关注近期表现好的弃用区球员
 **交易**: 与其他玩家交易，补强你的弱项`,
-    tips: ["养成每天看阵容的习惯", "关注"流式球员"策略", "不要因为一两周的表现就放弃球员"]
+    tips: ["养成每天看阵容的习惯", "关注streaming策略", "不要因为一两周的表现就放弃球员"]
   },
   {
     id: 5,
@@ -121,7 +121,6 @@ export default function HowToPlayPage() {
           <p className="page-desc">5 步带你玩转 Fantasy 篮球</p>
         </div>
 
-        {/* Progress Bar */}
         <div className="steps-progress">
           {steps.map(step => (
             <button
@@ -138,7 +137,6 @@ export default function HowToPlayPage() {
           </div>
         </div>
 
-        {/* Current Step Content */}
         <div className="step-content">
           <div className="step-header">
             <span className="step-badge">Step {currentStep.id}</span>
@@ -186,7 +184,6 @@ export default function HowToPlayPage() {
           </div>
         </div>
 
-        {/* Quick Links */}
         <div className="quick-links">
           <h3>相关页面</h3>
           <div className="links-grid">
