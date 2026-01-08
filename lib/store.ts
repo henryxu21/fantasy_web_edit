@@ -1,5 +1,6 @@
 // lib/store.ts
 /* =========================================================
+import { ALL_PLAYERS } from "./players-data";
    Blueprint Fantasy — Domain Store (STEP 1)
    - User / Session（原样保留）
    - Insight / Comment（原样可用）
@@ -336,38 +337,9 @@ export function addComment(insightId: string, body: string) {
 
 /* ------------------ Players Data ------------------ */
 
-const DEFAULT_PLAYERS: Player[] = [
-  { id: "p1", name: "Nikola Jokic", team: "DEN", position: "C", age: 29, ppg: 26.4, rpg: 12.4, apg: 9.0, spg: 1.4, bpg: 0.9, fg: 58.3, ft: 81.7, tov: 3.0, gp: 79, adp: 1.2, rank: 1, trend: "same" },
-  { id: "p2", name: "Luka Doncic", team: "DAL", position: "PG", age: 25, ppg: 33.9, rpg: 9.2, apg: 9.8, spg: 1.4, bpg: 0.5, fg: 48.7, ft: 78.6, tov: 4.0, gp: 70, adp: 2.1, rank: 2, trend: "same" },
-  { id: "p3", name: "Shai Gilgeous-Alexander", team: "OKC", position: "PG", age: 25, ppg: 30.1, rpg: 5.5, apg: 6.2, spg: 2.0, bpg: 0.9, fg: 53.5, ft: 87.4, tov: 2.2, gp: 75, adp: 3.0, rank: 3, trend: "up" },
-  { id: "p4", name: "Giannis Antetokounmpo", team: "MIL", position: "PF", age: 29, ppg: 30.4, rpg: 11.5, apg: 6.5, spg: 1.2, bpg: 1.1, fg: 61.1, ft: 65.7, tov: 3.4, gp: 73, adp: 3.8, rank: 4, trend: "same" },
-  { id: "p5", name: "Victor Wembanyama", team: "SAS", position: "C", age: 20, ppg: 21.4, rpg: 10.6, apg: 3.9, spg: 1.2, bpg: 3.6, fg: 46.5, ft: 79.6, tov: 3.7, gp: 71, adp: 5.2, rank: 5, trend: "up" },
-  { id: "p6", name: "Anthony Davis", team: "LAL", position: "PF", age: 31, ppg: 24.7, rpg: 12.6, apg: 3.5, spg: 1.2, bpg: 2.3, fg: 55.6, ft: 81.6, tov: 2.1, gp: 76, adp: 6.5, rank: 6, trend: "same", injury: "DTD" },
-  { id: "p7", name: "Jayson Tatum", team: "BOS", position: "SF", age: 26, ppg: 26.9, rpg: 8.1, apg: 4.9, spg: 1.0, bpg: 0.6, fg: 47.1, ft: 83.3, tov: 2.5, gp: 74, adp: 7.1, rank: 7, trend: "down" },
-  { id: "p8", name: "Tyrese Haliburton", team: "IND", position: "PG", age: 24, ppg: 20.1, rpg: 3.9, apg: 10.9, spg: 1.2, bpg: 0.7, fg: 47.7, ft: 85.5, tov: 2.4, gp: 69, adp: 7.8, rank: 8, trend: "down", injury: "Out" },
-  { id: "p9", name: "Anthony Edwards", team: "MIN", position: "SG", age: 22, ppg: 25.9, rpg: 5.4, apg: 5.1, spg: 1.3, bpg: 0.5, fg: 46.1, ft: 83.6, tov: 2.8, gp: 79, adp: 9.2, rank: 9, trend: "up" },
-  { id: "p10", name: "Kevin Durant", team: "PHX", position: "SF", age: 35, ppg: 27.1, rpg: 6.6, apg: 5.0, spg: 0.9, bpg: 1.2, fg: 52.3, ft: 85.6, tov: 3.3, gp: 75, adp: 10.0, rank: 10, trend: "same" },
-  { id: "p11", name: "Donovan Mitchell", team: "CLE", position: "SG", age: 27, ppg: 26.6, rpg: 5.1, apg: 6.1, spg: 1.8, bpg: 0.4, fg: 46.2, ft: 86.4, tov: 2.8, gp: 55, adp: 11.5, rank: 11, trend: "up" },
-  { id: "p12", name: "Chet Holmgren", team: "OKC", position: "C", age: 22, ppg: 16.5, rpg: 7.9, apg: 2.4, spg: 0.8, bpg: 2.3, fg: 53.0, ft: 79.0, tov: 1.7, gp: 82, adp: 12.3, rank: 12, trend: "up" },
-  { id: "p13", name: "Jaylen Brown", team: "BOS", position: "SG", age: 27, ppg: 23.0, rpg: 5.5, apg: 3.6, spg: 1.2, bpg: 0.5, fg: 49.9, ft: 70.3, tov: 2.5, gp: 70, adp: 13.1, rank: 13, trend: "same" },
-  { id: "p14", name: "Domantas Sabonis", team: "SAC", position: "C", age: 28, ppg: 19.4, rpg: 13.7, apg: 8.2, spg: 0.9, bpg: 0.5, fg: 59.6, ft: 73.2, tov: 3.4, gp: 82, adp: 14.5, rank: 14, trend: "same" },
-  { id: "p15", name: "Trae Young", team: "ATL", position: "PG", age: 25, ppg: 25.7, rpg: 2.8, apg: 10.8, spg: 1.1, bpg: 0.2, fg: 43.0, ft: 85.3, tov: 4.4, gp: 54, adp: 15.2, rank: 15, trend: "down" },
-  { id: "p16", name: "LaMelo Ball", team: "CHA", position: "PG", age: 23, ppg: 23.9, rpg: 5.1, apg: 8.0, spg: 1.3, bpg: 0.3, fg: 43.3, ft: 87.0, tov: 3.6, gp: 22, adp: 16.0, rank: 16, trend: "down", injury: "Out" },
-  { id: "p17", name: "De'Aaron Fox", team: "SAC", position: "PG", age: 26, ppg: 26.6, rpg: 4.6, apg: 5.6, spg: 2.0, bpg: 0.4, fg: 46.5, ft: 73.8, tov: 2.6, gp: 74, adp: 17.3, rank: 17, trend: "up" },
-  { id: "p18", name: "Kyrie Irving", team: "DAL", position: "PG", age: 32, ppg: 25.6, rpg: 5.0, apg: 5.2, spg: 1.3, bpg: 0.5, fg: 49.7, ft: 90.5, tov: 2.4, gp: 58, adp: 18.1, rank: 18, trend: "same" },
-  { id: "p19", name: "Devin Booker", team: "PHX", position: "SG", age: 27, ppg: 27.1, rpg: 4.5, apg: 6.9, spg: 1.0, bpg: 0.4, fg: 49.2, ft: 86.8, tov: 2.9, gp: 68, adp: 19.5, rank: 19, trend: "same" },
-  { id: "p20", name: "Ja Morant", team: "MEM", position: "PG", age: 25, ppg: 25.1, rpg: 5.6, apg: 8.1, spg: 0.8, bpg: 0.5, fg: 47.1, ft: 72.5, tov: 3.0, gp: 9, adp: 20.0, rank: 20, trend: "down", injury: "Out" },
-  { id: "p21", name: "Bam Adebayo", team: "MIA", position: "C", age: 26, ppg: 19.3, rpg: 10.4, apg: 3.9, spg: 1.1, bpg: 0.9, fg: 52.0, ft: 72.0, tov: 2.7, gp: 71, adp: 21.2, rank: 21, trend: "same" },
-  { id: "p22", name: "Pascal Siakam", team: "IND", position: "PF", age: 30, ppg: 21.3, rpg: 7.8, apg: 4.5, spg: 0.6, bpg: 0.6, fg: 54.0, ft: 78.0, tov: 2.4, gp: 75, adp: 22.5, rank: 22, trend: "up" },
-  { id: "p23", name: "Scottie Barnes", team: "TOR", position: "SF", age: 22, ppg: 19.9, rpg: 8.2, apg: 6.1, spg: 1.3, bpg: 1.5, fg: 47.5, ft: 77.0, tov: 3.0, gp: 60, adp: 23.1, rank: 23, trend: "up" },
-  { id: "p24", name: "Karl-Anthony Towns", team: "MIN", position: "C", age: 28, ppg: 21.8, rpg: 8.3, apg: 3.0, spg: 0.7, bpg: 0.7, fg: 50.4, ft: 87.3, tov: 2.9, gp: 62, adp: 24.0, rank: 24, trend: "same" },
-  { id: "p25", name: "Jalen Brunson", team: "NYK", position: "PG", age: 27, ppg: 28.7, rpg: 3.6, apg: 6.7, spg: 0.9, bpg: 0.2, fg: 47.9, ft: 84.7, tov: 2.4, gp: 77, adp: 25.5, rank: 25, trend: "up" },
-  { id: "p26", name: "Paul George", team: "PHI", position: "SF", age: 34, ppg: 22.6, rpg: 5.2, apg: 3.5, spg: 1.5, bpg: 0.4, fg: 47.1, ft: 90.7, tov: 2.6, gp: 74, adp: 26.2, rank: 26, trend: "down" },
-  { id: "p27", name: "Lauri Markkanen", team: "UTA", position: "PF", age: 27, ppg: 23.2, rpg: 8.2, apg: 2.0, spg: 0.6, bpg: 0.6, fg: 48.0, ft: 89.9, tov: 1.9, gp: 55, adp: 27.0, rank: 27, trend: "same" },
-  { id: "p28", name: "Jaren Jackson Jr.", team: "MEM", position: "PF", age: 24, ppg: 22.5, rpg: 5.5, apg: 2.3, spg: 1.0, bpg: 1.6, fg: 45.4, ft: 81.0, tov: 2.4, gp: 66, adp: 28.3, rank: 28, trend: "same" },
-  { id: "p29", name: "Franz Wagner", team: "ORL", position: "SF", age: 22, ppg: 19.7, rpg: 5.3, apg: 3.7, spg: 1.1, bpg: 0.5, fg: 48.0, ft: 85.0, tov: 2.0, gp: 72, adp: 29.1, rank: 29, trend: "up" },
-  { id: "p30", name: "LeBron James", team: "LAL", position: "SF", age: 39, ppg: 25.7, rpg: 7.3, apg: 8.3, spg: 1.3, bpg: 0.5, fg: 54.0, ft: 75.0, tov: 3.5, gp: 71, adp: 30.0, rank: 30, trend: "down" },
-];
+import { ALL_PLAYERS } from "./players-data";
+
+const DEFAULT_PLAYERS: Player[] = ALL_PLAYERS as Player[];
 
 export function getPlayers(): Player[] {
   if (!canUseStorage()) return DEFAULT_PLAYERS;
