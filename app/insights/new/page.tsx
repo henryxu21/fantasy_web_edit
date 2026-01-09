@@ -1,92 +1,412 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createInsight } from "@/lib/store";
+import Link from "next/link";
+import Header from "@/components/Header";
+import { useLang } from "@/lib/lang";
+import { getSessionUser, createInsight, listLeagues } from "@/lib/store";
 
 export default function NewInsightPage() {
+  const { t } = useLang();
   const router = useRouter();
-
+  const [user, setUser] = useState<ReturnType<typeof getSessionUser>>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [leagueSlug, setLeagueSlug] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [leagues, setLeagues] = useState<{ slug: string; name: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const onSubmit = () => {
-    if (!title.trim() || !body.trim()) {
-      setError("Title and body are required.");
-      return;
+  useEffect(() => {
+    const u = getSessionUser();
+    setUser(u);
+    if (u) {
+      setLeagues(listLeagues().map(l => ({ slug: l.slug, name: l.name })));
     }
+  }, []);
 
-    setSubmitting(true);
-    setError(null);
-
-    const res = createInsight({
-      title,
-      body,
-    });
-
-    if (!res.ok) {
-      setSubmitting(false);
-      setError(res.error ?? "Failed to create insight");
-      return;
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
-
-    // ✅ 核心：拿到真实 id，跳转详情页
-    router.push(`/insights/${res.insight.id}`);
   };
 
+  const handleAddTag = () => {
+    const tag = tagInput.trim().toLowerCase();
+    if (tag && !tags.includes(tag) && tags.length < 5) {
+      setTags([...tags, tag]);
+      setTagInput("");
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter(t => t !== tagToRemove));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddTag();
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!title.trim() || !body.trim()) {
+      alert(t("请填写标题和内容", "Please fill in title and content"));
+      return;
+    }
+
+    setLoading(true);
+
+    // 将额外数据存储在 body 中（临时方案）
+    const metadata = {
+      coverImage,
+      tags,
+    };
+    const bodyWithMeta = JSON.stringify({ content: body, metadata });
+
+    const result = createInsight({
+      title,
+      body: bodyWithMeta,
+      leagueSlug: leagueSlug || undefined,
+    });
+
+    if (result.ok) {
+      router.push(`/insights/${result.insight?.id}`);
+    } else {
+      alert(result.error || t("发布失败", "Failed to publish"));
+      setLoading(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="app">
+        <Header />
+        <main className="page-content" style={{ textAlign: "center", paddingTop: 100 }}>
+          <h1 className="page-title">{t("需要登录", "Login Required")}</h1>
+          <p style={{ color: "#64748b", marginBottom: 24 }}>{t("请先登录后发布内容", "Please login to publish content")}</p>
+          <Link href="/auth/login" className="btn btn-primary">{t("登录", "Login")}</Link>
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="bpfx-bg">
-      <main className="bpfx-main">
-        <div className="bpfx-wrap">
-          <div className="bpfx-panel" style={{ maxWidth: 720, margin: "0 auto" }}>
-            <h2 className="bpfx-panelTitle">New Insight</h2>
-            <p className="bpfx-panelText">
-              Write a clear judgment. You can bind it to a league later.
-            </p>
+    <div className="app">
+      <Header />
 
-            <div className="bpfx-stack">
-              <input
-                className="bpfx-input"
-                placeholder="Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+      <main className="page-content">
+        <div className="page-header">
+          <h1 className="page-title">{t("发布洞见", "Share Your Insight")}</h1>
+          <p className="page-desc">{t("分享你的 Fantasy 篮球策略和分析", "Share your Fantasy basketball strategies and analysis")}</p>
+        </div>
 
-              <textarea
-                className="bpfx-textarea"
-                placeholder="Write your judgment..."
-                rows={6}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-              />
-
-              {error && (
-                <div style={{ color: "#d33", fontSize: 14 }}>{error}</div>
+        <form onSubmit={handleSubmit} className="insight-form">
+          {/* Cover Image Upload */}
+          <div className="form-section">
+            <label className="form-label">{t("封面图片", "Cover Image")} <span className="optional">({t("可选", "Optional")})</span></label>
+            <div 
+              className="cover-upload"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                backgroundImage: coverImage ? `url(${coverImage})` : undefined,
+                backgroundSize: "cover",
+                backgroundPosition: "center"
+              }}
+            >
+              {!coverImage && (
+                <div className="upload-placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 40, height: 40, marginBottom: 8 }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span>{t("点击上传封面图", "Click to upload cover image")}</span>
+                  <span className="upload-hint">{t("推荐尺寸 16:9", "Recommended 16:9 ratio")}</span>
+                </div>
               )}
-
-              <div className="bpfx-row" style={{ justifyContent: "flex-end" }}>
-                <button
-                  className="bpfx-btn bpfx-btnGhost"
-                  onClick={() => router.back()}
-                  disabled={submitting}
+              {coverImage && (
+                <button 
+                  type="button" 
+                  className="remove-cover"
+                  onClick={(e) => { e.stopPropagation(); setCoverImage(null); }}
                 >
-                  Cancel
+                  ✕
                 </button>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              style={{ display: "none" }}
+            />
+          </div>
 
-                <button
-                  className="bpfx-btn bpfx-btnPrimary"
-                  onClick={onSubmit}
-                  disabled={submitting}
-                >
-                  {submitting ? "Posting..." : "Post"}
-                </button>
+          {/* Title */}
+          <div className="form-section">
+            <label className="form-label">{t("标题", "Title")} *</label>
+            <input
+              className="form-input title-input"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={t("例如：为什么我在首轮放弃了 Tatum", "E.g., Why I passed on Tatum in round 1")}
+              maxLength={100}
+            />
+            <div className="char-count">{title.length}/100</div>
+          </div>
+
+          {/* Body */}
+          <div className="form-section">
+            <label className="form-label">{t("内容", "Content")} *</label>
+            <textarea
+              className="form-input body-input"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={t(
+                "分享你的策略、分析或经验...\n\n支持使用 Markdown 格式",
+                "Share your strategy, analysis or experience...\n\nMarkdown formatting supported"
+              )}
+              rows={12}
+            />
+          </div>
+
+          {/* Tags */}
+          <div className="form-section">
+            <label className="form-label">{t("标签", "Tags")} <span className="optional">({t("最多5个", "Max 5")})</span></label>
+            <div className="tags-input-container">
+              <div className="tags-list">
+                {tags.map(tag => (
+                  <span key={tag} className="tag-chip">
+                    #{tag}
+                    <button type="button" onClick={() => handleRemoveTag(tag)}>✕</button>
+                  </span>
+                ))}
               </div>
+              {tags.length < 5 && (
+                <div className="tag-input-wrapper">
+                  <input
+                    className="form-input tag-input"
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={t("输入标签后按回车", "Type tag and press Enter")}
+                  />
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleAddTag}>
+                    {t("添加", "Add")}
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="suggested-tags">
+              <span className="suggested-label">{t("热门标签:", "Popular:")}</span>
+              {["选秀策略", "球员分析", "交易建议", "新手指南", "Punt策略"].map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  className="suggested-tag"
+                  onClick={() => {
+                    if (!tags.includes(tag) && tags.length < 5) {
+                      setTags([...tags, tag]);
+                    }
+                  }}
+                >
+                  #{tag}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+
+          {/* League Association */}
+          <div className="form-section">
+            <label className="form-label">{t("关联联赛", "Associate with League")} <span className="optional">({t("可选", "Optional")})</span></label>
+            <select
+              className="form-input"
+              value={leagueSlug}
+              onChange={(e) => setLeagueSlug(e.target.value)}
+            >
+              <option value="">{t("不关联联赛", "No league association")}</option>
+              {leagues.map(league => (
+                <option key={league.slug} value={league.slug}>{league.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Submit */}
+          <div className="form-actions">
+            <Link href="/" className="btn btn-ghost">{t("取消", "Cancel")}</Link>
+            <button type="submit" className="btn btn-primary" disabled={loading || !title.trim() || !body.trim()}>
+              {loading ? t("发布中...", "Publishing...") : t("发布", "Publish")}
+            </button>
+          </div>
+        </form>
       </main>
+
+      <style jsx>{`
+        .insight-form {
+          max-width: 700px;
+          margin: 0 auto;
+        }
+        .form-section {
+          margin-bottom: 24px;
+        }
+        .form-label {
+          display: block;
+          margin-bottom: 8px;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .optional {
+          font-weight: 400;
+          color: var(--text-muted);
+          font-size: 14px;
+        }
+        .cover-upload {
+          width: 100%;
+          height: 200px;
+          border: 2px dashed var(--border-color);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s;
+          position: relative;
+          overflow: hidden;
+        }
+        .cover-upload:hover {
+          border-color: var(--accent);
+          background: rgba(245, 158, 11, 0.05);
+        }
+        .upload-placeholder {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          color: var(--text-muted);
+        }
+        .upload-hint {
+          font-size: 12px;
+          margin-top: 4px;
+        }
+        .remove-cover {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: rgba(0,0,0,0.6);
+          color: white;
+          border: none;
+          cursor: pointer;
+          font-size: 16px;
+        }
+        .title-input {
+          font-size: 18px;
+          font-weight: 600;
+        }
+        .char-count {
+          text-align: right;
+          font-size: 12px;
+          color: var(--text-muted);
+          margin-top: 4px;
+        }
+        .body-input {
+          min-height: 250px;
+          resize: vertical;
+          line-height: 1.6;
+        }
+        .tags-input-container {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        .tags-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .tag-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(245, 158, 11, 0.15);
+          color: var(--accent);
+          padding: 4px 10px;
+          border-radius: 16px;
+          font-size: 14px;
+        }
+        .tag-chip button {
+          background: none;
+          border: none;
+          color: inherit;
+          cursor: pointer;
+          padding: 0;
+          font-size: 12px;
+          opacity: 0.7;
+        }
+        .tag-chip button:hover {
+          opacity: 1;
+        }
+        .tag-input-wrapper {
+          display: flex;
+          gap: 8px;
+        }
+        .tag-input {
+          flex: 1;
+          margin: 0;
+        }
+        .suggested-tags {
+          margin-top: 12px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+        }
+        .suggested-label {
+          font-size: 13px;
+          color: var(--text-muted);
+        }
+        .suggested-tag {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          padding: 4px 10px;
+          font-size: 13px;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .suggested-tag:hover {
+          border-color: var(--accent);
+          color: var(--accent);
+        }
+        .form-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 32px;
+          padding-top: 24px;
+          border-top: 1px solid var(--border-color);
+        }
+      `}</style>
     </div>
   );
 }
