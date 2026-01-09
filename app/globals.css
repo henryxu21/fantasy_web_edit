@@ -1718,3 +1718,18 @@ button {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Danger Button */
+.btn-danger {
+  background: #ef4444;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.btn-danger:hover {
+  background: #dc2626;
+}

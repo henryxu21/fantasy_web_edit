@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
 import { useLang } from "@/lib/lang";
@@ -22,6 +22,7 @@ type ParsedInsight = {
 export default function InsightDetailPage() {
   const { t } = useLang();
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const [user, setUser] = useState<ReturnType<typeof getSessionUser>>(null);
   const [insight, setInsight] = useState<ParsedInsight | null>(null);
@@ -30,13 +31,14 @@ export default function InsightDetailPage() {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
-    setUser(getSessionUser());
+    const currentUser = getSessionUser();
+    setUser(currentUser);
     
     const raw = getInsightById(id);
     if (raw) {
-      // Parse the body which may contain metadata
       let content = raw.body;
       let coverImage: string | undefined;
       let tags: string[] | undefined;
@@ -65,15 +67,15 @@ export default function InsightDetailPage() {
       });
       setLikeCount(raw.heat);
       
-      // Load comments
       setComments(listComments(raw.id));
       
-      // Check if user has liked (stored in localStorage)
       const likedPosts = JSON.parse(localStorage.getItem("bp_liked_posts") || "[]");
       setLiked(likedPosts.includes(raw.id));
     }
     setLoading(false);
   }, [id]);
+
+  const isAuthor = user && insight && insight.author === user.name;
 
   const handleLike = () => {
     if (!user) {
@@ -84,13 +86,11 @@ export default function InsightDetailPage() {
     const likedPosts = JSON.parse(localStorage.getItem("bp_liked_posts") || "[]");
     
     if (liked) {
-      // Unlike
       const newLiked = likedPosts.filter((pid: string) => pid !== id);
       localStorage.setItem("bp_liked_posts", JSON.stringify(newLiked));
       setLiked(false);
       setLikeCount(prev => prev - 1);
     } else {
-      // Like
       likedPosts.push(id);
       localStorage.setItem("bp_liked_posts", JSON.stringify(likedPosts));
       setLiked(true);
@@ -114,6 +114,16 @@ export default function InsightDetailPage() {
     }
   };
 
+  const handleDelete = () => {
+    // 直接在 localStorage 中删除
+    const allInsights = JSON.parse(localStorage.getItem("bp_insights") || "[]");
+    const filtered = allInsights.filter((i: any) => i.id !== id);
+    localStorage.setItem("bp_insights", JSON.stringify(filtered));
+    
+    alert(t("帖子已删除", "Post deleted"));
+    router.push("/");
+  };
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -130,13 +140,8 @@ export default function InsightDetailPage() {
     const url = window.location.href;
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: insight?.title,
-          url: url,
-        });
-      } catch {
-        // User cancelled or share failed
-      }
+        await navigator.share({ title: insight?.title, url });
+      } catch { }
     } else {
       navigator.clipboard.writeText(url);
       alert(t("链接已复制到剪贴板", "Link copied to clipboard"));
@@ -172,7 +177,6 @@ export default function InsightDetailPage() {
       <Header />
 
       <main className="insight-detail">
-        {/* Cover Image */}
         {insight.coverImage && (
           <div className="cover-image">
             <img src={insight.coverImage} alt={insight.title} />
@@ -180,9 +184,19 @@ export default function InsightDetailPage() {
         )}
 
         <article className="insight-content">
-          {/* Header */}
           <header className="insight-header">
-            <h1 className="insight-title">{insight.title}</h1>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <h1 className="insight-title">{insight.title}</h1>
+              {isAuthor && (
+                <button 
+                  className="delete-btn"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  title={t("删除", "Delete")}
+                >
+                  🗑️
+                </button>
+              )}
+            </div>
             
             <div className="insight-meta">
               <Link href={`/u/${insight.author.replace("@", "")}`} className="author-link">
@@ -201,7 +215,6 @@ export default function InsightDetailPage() {
               )}
             </div>
 
-            {/* Tags */}
             {insight.tags && insight.tags.length > 0 && (
               <div className="insight-tags">
                 {insight.tags.map(tag => (
@@ -211,14 +224,12 @@ export default function InsightDetailPage() {
             )}
           </header>
 
-          {/* Body */}
           <div className="insight-body">
             {insight.content.split("\n").map((paragraph, i) => (
               paragraph.trim() ? <p key={i}>{paragraph}</p> : <br key={i} />
             ))}
           </div>
 
-          {/* Actions */}
           <div className="insight-actions">
             <button className={`action-btn ${liked ? "liked" : ""}`} onClick={handleLike}>
               <span className="action-icon">{liked ? "❤️" : "🤍"}</span>
@@ -235,13 +246,31 @@ export default function InsightDetailPage() {
           </div>
         </article>
 
-        {/* Comments Section */}
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <h3>{t("确认删除", "Confirm Delete")}</h3>
+              <p style={{ color: "var(--text-muted)", margin: "16px 0" }}>
+                {t("确定要删除这篇帖子吗？此操作无法撤销。", "Are you sure you want to delete this post? This action cannot be undone.")}
+              </p>
+              <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                <button className="btn btn-ghost" onClick={() => setShowDeleteConfirm(false)}>
+                  {t("取消", "Cancel")}
+                </button>
+                <button className="btn btn-danger" onClick={handleDelete}>
+                  {t("删除", "Delete")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <section className="comments-section">
           <h3 className="comments-title">
             {t("评论", "Comments")} ({comments.length})
           </h3>
 
-          {/* Comment Form */}
           <form className="comment-form" onSubmit={handleComment}>
             <div className="comment-input-wrapper">
               {user ? (
@@ -269,7 +298,6 @@ export default function InsightDetailPage() {
             </div>
           </form>
 
-          {/* Comments List */}
           <div className="comments-list">
             {comments.length === 0 ? (
               <div className="no-comments">
@@ -322,6 +350,19 @@ export default function InsightDetailPage() {
           font-weight: 700;
           margin-bottom: 16px;
           line-height: 1.3;
+          flex: 1;
+        }
+        .delete-btn {
+          background: none;
+          border: none;
+          font-size: 20px;
+          cursor: pointer;
+          padding: 8px;
+          opacity: 0.6;
+          transition: opacity 0.2s;
+        }
+        .delete-btn:hover {
+          opacity: 1;
         }
         .insight-meta {
           display: flex;
@@ -351,6 +392,7 @@ export default function InsightDetailPage() {
           font-weight: 600;
           color: #000;
           font-size: 14px;
+          flex-shrink: 0;
         }
         .author-name {
           font-weight: 500;
@@ -417,6 +459,26 @@ export default function InsightDetailPage() {
         }
         .action-icon {
           font-size: 18px;
+        }
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0,0,0,0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+        .modal-content {
+          background: var(--bg-card);
+          border: 1px solid var(--border-color);
+          border-radius: 12px;
+          padding: 24px;
+          max-width: 400px;
+          width: 90%;
         }
         .comments-section {
           background: var(--bg-card);
