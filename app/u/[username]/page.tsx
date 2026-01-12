@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import { useLang } from "@/lib/lang";
@@ -27,7 +27,6 @@ const ALL_BADGES: Badge[] = [
   { id: "social", name: "社交达人", nameEn: "Social Star", icon: "💬", description: "评论超过50条", descriptionEn: "Posted 50+ comments", color: "#ec4899" },
 ];
 
-// 选秀历史类型
 type DraftHistory = {
   id: string;
   leagueName: string;
@@ -41,7 +40,6 @@ type DraftHistory = {
 export default function UserProfilePage() {
   const { t } = useLang();
   const params = useParams();
-  const router = useRouter();
   const username = params.username as string;
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof getSessionUser>>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
@@ -67,14 +65,19 @@ export default function UserProfilePage() {
     const user = getSessionUser();
     setCurrentUser(user);
     
-    const isOwn = user && user.username === username;
+    const isOwn = user && user.username.toLowerCase() === username.toLowerCase();
     setIsOwnProfile(!!isOwn);
     
-    // 加载帖子
+    // 加载帖子 - 匹配 username 或 name（兼容旧数据）
     const allInsights = listInsights();
     const filtered = allInsights.filter(i => {
-      const authorName = i.author.replace("@", "").toLowerCase();
-      return authorName === username.toLowerCase();
+      const authorClean = i.author.replace("@", "").toLowerCase();
+      const usernameClean = username.toLowerCase();
+      // 匹配 username 或者 name
+      if (authorClean === usernameClean) return true;
+      // 也检查当前用户的 name（如果是自己的主页）
+      if (isOwn && user && authorClean === user.name.toLowerCase()) return true;
+      return false;
     });
     setUserInsights(filtered.sort((a, b) => b.createdAt - a.createdAt));
     
@@ -89,18 +92,15 @@ export default function UserProfilePage() {
     // 计算真实统计数据
     const totalLikes = filtered.reduce((sum, i) => sum + (i.heat || 0), 0);
     
-    // 从 localStorage 读取真实的评论数
     const allComments = JSON.parse(localStorage.getItem("bp_comments") || "[]");
     const userComments = allComments.filter((c: any) => {
       const commentAuthor = c.author?.replace("@", "").toLowerCase();
       return commentAuthor === username.toLowerCase();
     });
     
-    // 从 localStorage 读取选秀历史
     const savedDrafts = JSON.parse(localStorage.getItem(`bp_drafts_${username}`) || "[]");
     setDraftHistory(savedDrafts);
     
-    // 从 localStorage 读取冠军数
     const championships = JSON.parse(localStorage.getItem(`bp_championships_${username}`) || "[]");
     
     setStats({
@@ -114,57 +114,26 @@ export default function UserProfilePage() {
     
     // 根据真实数据计算徽章
     const badges: Badge[] = [];
-    
-    // 新秀徽章 - 发布过至少1篇帖子
-    if (filtered.length >= 1) {
-      badges.push(ALL_BADGES.find(b => b.id === "rookie")!);
-    }
-    
-    // 专家认证 - 发布超过10篇帖子
-    if (filtered.length >= 10) {
-      badges.push(ALL_BADGES.find(b => b.id === "expert")!);
-    }
-    
-    // 分析师徽章 - 帖子获得100+点赞
-    if (totalLikes >= 100) {
-      badges.push(ALL_BADGES.find(b => b.id === "analyst")!);
-    }
-    
-    // 资深玩家 - 参与超过5个联赛
-    if (userOwnedLeagues.length >= 5) {
-      badges.push(ALL_BADGES.find(b => b.id === "veteran")!);
-    }
-    
-    // 社交达人 - 评论超过50条
-    if (userComments.length >= 50) {
-      badges.push(ALL_BADGES.find(b => b.id === "social")!);
-    }
-    
-    // 冠军徽章 - 赢得过联赛冠军
-    if (championships.length > 0) {
-      badges.push(ALL_BADGES.find(b => b.id === "champion")!);
-    }
-    
+    if (filtered.length >= 1) badges.push(ALL_BADGES.find(b => b.id === "rookie")!);
+    if (filtered.length >= 10) badges.push(ALL_BADGES.find(b => b.id === "expert")!);
+    if (totalLikes >= 100) badges.push(ALL_BADGES.find(b => b.id === "analyst")!);
+    if (userOwnedLeagues.length >= 5) badges.push(ALL_BADGES.find(b => b.id === "veteran")!);
+    if (userComments.length >= 50) badges.push(ALL_BADGES.find(b => b.id === "social")!);
+    if (championships.length > 0) badges.push(ALL_BADGES.find(b => b.id === "champion")!);
     setUserBadges(badges.filter(Boolean));
     
-    // 计算真实粉丝数 - 遍历所有用户的 following 列表
-    let realFollowers = 0;
-    // 这里简化处理，从当前用户的 localStorage 检查
-    // 实际生产环境应该有后端数据库
+    // 粉丝数
     const followersKey = `bp_followers_${username}`;
     const savedFollowers = JSON.parse(localStorage.getItem(followersKey) || "[]");
-    realFollowers = savedFollowers.length;
-    setFollowersCount(realFollowers);
+    setFollowersCount(savedFollowers.length);
     
-    // 计算关注数
-    let realFollowing = 0;
+    // 关注数
     if (user && isOwn) {
       const followingList = JSON.parse(localStorage.getItem(`bp_following_${user.id}`) || "[]");
-      realFollowing = followingList.length;
+      setFollowingCount(followingList.length);
     }
-    setFollowingCount(realFollowing);
     
-    // 检查当前用户是否关注了该用户
+    // 检查关注状态
     if (user && !isOwn) {
       const following = JSON.parse(localStorage.getItem(`bp_following_${user.id}`) || "[]");
       setIsFollowing(following.includes(username) || following.includes(`@${username}`));
@@ -182,7 +151,6 @@ export default function UserProfilePage() {
   const parseInsight = (insight: Insight) => {
     let coverImage: string | undefined;
     let tags: string[] | undefined;
-    
     try {
       const parsed = JSON.parse(insight.body);
       if (parsed.metadata) {
@@ -190,7 +158,6 @@ export default function UserProfilePage() {
         tags = parsed.metadata.tags;
       }
     } catch { }
-    
     return { ...insight, coverImage, tags };
   };
 
@@ -202,12 +169,10 @@ export default function UserProfilePage() {
     
     const followingKey = `bp_following_${currentUser.id}`;
     const followersKey = `bp_followers_${username}`;
-    
     const following = JSON.parse(localStorage.getItem(followingKey) || "[]");
     const followers = JSON.parse(localStorage.getItem(followersKey) || "[]");
     
     if (isFollowing) {
-      // 取消关注
       const newFollowing = following.filter((name: string) => name !== username && name !== `@${username}`);
       const newFollowers = followers.filter((id: string) => id !== currentUser.id);
       localStorage.setItem(followingKey, JSON.stringify(newFollowing));
@@ -215,7 +180,6 @@ export default function UserProfilePage() {
       setIsFollowing(false);
       setFollowersCount(prev => Math.max(0, prev - 1));
     } else {
-      // 关注
       following.push(username);
       followers.push(currentUser.id);
       localStorage.setItem(followingKey, JSON.stringify(following));
@@ -256,13 +220,9 @@ export default function UserProfilePage() {
         <div className="profile-header">
           <div className="profile-main">
             <div className="avatar-section">
-              <div className="avatar">
-                {username[0]?.toUpperCase()}
-              </div>
+              <div className="avatar">{username[0]?.toUpperCase()}</div>
               {userBadges.length > 0 && (
-                <div className="primary-badge" style={{ background: userBadges[0].color }}>
-                  {userBadges[0].icon}
-                </div>
+                <div className="primary-badge" style={{ background: userBadges[0].color }}>{userBadges[0].icon}</div>
               )}
             </div>
             
@@ -270,16 +230,11 @@ export default function UserProfilePage() {
               <div className="name-row">
                 <h1 className="username">@{username}</h1>
                 {userBadges.length > 0 && (
-                  <span className="verified-badge" title={t(userBadges[0].name, userBadges[0].nameEn)}>
-                    ✓
-                  </span>
+                  <span className="verified-badge" title={t(userBadges[0].name, userBadges[0].nameEn)}>✓</span>
                 )}
               </div>
-              <p className="bio">
-                {isOwnProfile ? t("这是你的个人主页", "This is your profile") : t("Fantasy 篮球玩家", "Fantasy Basketball Player")}
-              </p>
+              <p className="bio">{isOwnProfile ? t("这是你的个人主页", "This is your profile") : t("Fantasy 篮球玩家", "Fantasy Basketball Player")}</p>
               
-              {/* Stats Row */}
               <div className="stats-row">
                 <div className="stat-item">
                   <span className="stat-value">{stats.totalPosts}</span>
@@ -297,22 +252,18 @@ export default function UserProfilePage() {
             </div>
           </div>
           
-          {/* Action Buttons */}
           <div className="profile-actions">
             {isOwnProfile ? (
               <button className="btn btn-ghost">{t("编辑资料", "Edit Profile")}</button>
             ) : (
-              <button 
-                className={`btn ${isFollowing ? "btn-ghost" : "btn-primary"}`}
-                onClick={handleFollow}
-              >
+              <button className={`btn ${isFollowing ? "btn-ghost" : "btn-primary"}`} onClick={handleFollow}>
                 {isFollowing ? t("已关注", "Following") : t("关注", "Follow")}
               </button>
             )}
           </div>
         </div>
 
-        {/* Badges Section - 只有有徽章时才显示 */}
+        {/* Badges */}
         {userBadges.length > 0 && (
           <div className="badges-section">
             <h3 className="section-title">{t("徽章", "Badges")}</h3>
@@ -332,44 +283,29 @@ export default function UserProfilePage() {
 
         {/* Tabs */}
         <div className="tabs-container">
-          <button 
-            className={`tab-btn ${activeTab === "posts" ? "active" : ""}`}
-            onClick={() => setActiveTab("posts")}
-          >
+          <button className={`tab-btn ${activeTab === "posts" ? "active" : ""}`} onClick={() => setActiveTab("posts")}>
             {t("帖子", "Posts")} ({userInsights.length})
           </button>
-          <button 
-            className={`tab-btn ${activeTab === "leagues" ? "active" : ""}`}
-            onClick={() => setActiveTab("leagues")}
-          >
+          <button className={`tab-btn ${activeTab === "leagues" ? "active" : ""}`} onClick={() => setActiveTab("leagues")}>
             {t("联赛", "Leagues")} ({userLeagues.length})
           </button>
-          <button 
-            className={`tab-btn ${activeTab === "drafts" ? "active" : ""}`}
-            onClick={() => setActiveTab("drafts")}
-          >
+          <button className={`tab-btn ${activeTab === "drafts" ? "active" : ""}`} onClick={() => setActiveTab("drafts")}>
             {t("选秀历史", "Draft History")} ({draftHistory.length})
           </button>
-          <button 
-            className={`tab-btn ${activeTab === "stats" ? "active" : ""}`}
-            onClick={() => setActiveTab("stats")}
-          >
+          <button className={`tab-btn ${activeTab === "stats" ? "active" : ""}`} onClick={() => setActiveTab("stats")}>
             {t("战绩统计", "Stats")}
           </button>
         </div>
 
         {/* Tab Content */}
         <div className="tab-content">
-          {/* Posts Tab */}
           {activeTab === "posts" && (
             <div>
               {userInsights.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-icon">📝</div>
                   <p>{isOwnProfile ? t("你还没有发布任何帖子", "You haven't posted anything yet") : t("该用户还没有发布帖子", "This user hasn't posted anything yet")}</p>
-                  {isOwnProfile && (
-                    <Link href="/insights/new" className="btn btn-primary">{t("发布第一篇帖子", "Create Your First Post")}</Link>
-                  )}
+                  {isOwnProfile && <Link href="/insights/new" className="btn btn-primary">{t("发布第一篇帖子", "Create Your First Post")}</Link>}
                 </div>
               ) : (
                 <div className="posts-grid">
@@ -377,23 +313,14 @@ export default function UserProfilePage() {
                     const parsed = parseInsight(insight);
                     return (
                       <Link key={insight.id} href={`/insights/${insight.id}`} className="post-card">
-                        <div 
-                          className="post-cover"
-                          style={{
-                            backgroundImage: parsed.coverImage 
-                              ? `url(${parsed.coverImage})`
-                              : "linear-gradient(135deg, #1e293b, #334155)"
-                          }}
-                        >
+                        <div className="post-cover" style={{ backgroundImage: parsed.coverImage ? `url(${parsed.coverImage})` : "linear-gradient(135deg, #1e293b, #334155)" }}>
                           <span className="post-heat">🔥 {insight.heat}</span>
                         </div>
                         <div className="post-info">
                           <h3 className="post-title">{insight.title}</h3>
                           <div className="post-meta">
                             <span>{formatDate(insight.createdAt)}</span>
-                            {parsed.tags && parsed.tags[0] && (
-                              <span className="post-tag">#{parsed.tags[0]}</span>
-                            )}
+                            {parsed.tags && parsed.tags[0] && <span className="post-tag">#{parsed.tags[0]}</span>}
                           </div>
                         </div>
                       </Link>
@@ -404,23 +331,18 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          {/* Leagues Tab */}
           {activeTab === "leagues" && (
             <div>
               {isOwnProfile && userLeagues.length > 1 && (
                 <div style={{ marginBottom: 16, textAlign: "right" }}>
-                  <button className="btn btn-ghost btn-sm" onClick={handleDeleteAllDuplicates}>
-                    {t("清理重复", "Clean Duplicates")}
-                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={handleDeleteAllDuplicates}>{t("清理重复", "Clean Duplicates")}</button>
                 </div>
               )}
               {userLeagues.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-icon">🏀</div>
                   <p>{isOwnProfile ? t("你还没有创建任何联赛", "You haven't created any leagues") : t("该用户还没有联赛", "This user has no leagues")}</p>
-                  {isOwnProfile && (
-                    <Link href="/league/new" className="btn btn-primary">{t("创建联赛", "Create League")}</Link>
-                  )}
+                  {isOwnProfile && <Link href="/league/new" className="btn btn-primary">{t("创建联赛", "Create League")}</Link>}
                 </div>
               ) : (
                 <div className="leagues-list">
@@ -436,14 +358,7 @@ export default function UserProfilePage() {
                           </div>
                         </div>
                       </Link>
-                      {isOwnProfile && (
-                        <button 
-                          className="delete-btn"
-                          onClick={() => setShowDeleteModal(league.id)}
-                        >
-                          🗑️
-                        </button>
-                      )}
+                      {isOwnProfile && <button className="delete-btn" onClick={() => setShowDeleteModal(league.id)}>🗑️</button>}
                     </div>
                   ))}
                 </div>
@@ -451,12 +366,11 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          {/* Draft History Tab */}
           {activeTab === "drafts" && (
             <div>
               {draftHistory.length === 0 ? (
                 <div className="empty-state">
-                  <div className="empty-icon">��</div>
+                  <div className="empty-icon">📋</div>
                   <p>{t("还没有选秀记录", "No draft history yet")}</p>
                   <p className="empty-hint">{t("完成联赛选秀后，记录会显示在这里", "Complete a league draft to see your history here")}</p>
                   <Link href="/mock-draft" className="btn btn-primary">{t("开始模拟选秀", "Start Mock Draft")}</Link>
@@ -465,24 +379,12 @@ export default function UserProfilePage() {
                 <div className="drafts-list">
                   {draftHistory.map(draft => (
                     <div key={draft.id} className="draft-card">
-                      <div className="draft-rank" style={{ 
-                        background: draft.rank === 1 ? "#eab308" : draft.rank === 2 ? "#94a3b8" : draft.rank === 3 ? "#cd7f32" : "var(--bg-secondary)"
-                      }}>
-                        #{draft.rank}
-                      </div>
+                      <div className="draft-rank" style={{ background: draft.rank === 1 ? "#eab308" : draft.rank === 2 ? "#94a3b8" : draft.rank === 3 ? "#cd7f32" : "var(--bg-secondary)" }}>#{draft.rank}</div>
                       <div className="draft-info">
                         <h3 className="draft-league">{draft.leagueName}</h3>
-                        <div className="draft-meta">
-                          <span>{draft.season}</span>
-                          <span>•</span>
-                          <span>{draft.totalTeams} {t("队伍", "teams")}</span>
-                        </div>
+                        <div className="draft-meta"><span>{draft.season}</span><span>•</span><span>{draft.totalTeams} {t("队伍", "teams")}</span></div>
                       </div>
-                      <div className="draft-result" style={{
-                        color: draft.rank === 1 ? "#eab308" : "var(--text-primary)"
-                      }}>
-                        {draft.result}
-                      </div>
+                      <div className="draft-result" style={{ color: draft.rank === 1 ? "#eab308" : "var(--text-primary)" }}>{draft.result}</div>
                     </div>
                   ))}
                 </div>
@@ -490,51 +392,24 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          {/* Stats Tab */}
           {activeTab === "stats" && (
             <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-icon">📝</div>
-                <div className="stat-content">
-                  <span className="stat-number">{stats.totalPosts}</span>
-                  <span className="stat-label">{t("发布帖子", "Posts Published")}</span>
+              {[
+                { icon: "📝", value: stats.totalPosts, label: t("发布帖子", "Posts Published") },
+                { icon: "❤️", value: stats.totalLikes, label: t("获得点赞", "Likes Received") },
+                { icon: "💬", value: stats.totalComments, label: t("发表评论", "Comments Made") },
+                { icon: "🏀", value: stats.leaguesJoined, label: t("参与联赛", "Leagues Joined") },
+                { icon: "🏆", value: stats.leaguesWon, label: t("联赛冠军", "Championships") },
+                { icon: "📋", value: stats.draftsCompleted, label: t("完成选秀", "Drafts Completed") },
+              ].map((stat, i) => (
+                <div key={i} className="stat-card">
+                  <div className="stat-icon">{stat.icon}</div>
+                  <div className="stat-content">
+                    <span className="stat-number">{stat.value}</span>
+                    <span className="stat-label">{stat.label}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">❤️</div>
-                <div className="stat-content">
-                  <span className="stat-number">{stats.totalLikes}</span>
-                  <span className="stat-label">{t("获得点赞", "Likes Received")}</span>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">💬</div>
-                <div className="stat-content">
-                  <span className="stat-number">{stats.totalComments}</span>
-                  <span className="stat-label">{t("发表评论", "Comments Made")}</span>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">🏀</div>
-                <div className="stat-content">
-                  <span className="stat-number">{stats.leaguesJoined}</span>
-                  <span className="stat-label">{t("参与联赛", "Leagues Joined")}</span>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">🏆</div>
-                <div className="stat-content">
-                  <span className="stat-number">{stats.leaguesWon}</span>
-                  <span className="stat-label">{t("联赛冠军", "Championships")}</span>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon">📋</div>
-                <div className="stat-content">
-                  <span className="stat-number">{stats.draftsCompleted}</span>
-                  <span className="stat-label">{t("完成选秀", "Drafts Completed")}</span>
-                </div>
-              </div>
+              ))}
             </div>
           )}
         </div>
@@ -544,16 +419,10 @@ export default function UserProfilePage() {
           <div className="modal-overlay" onClick={() => setShowDeleteModal(null)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
               <h3>{t("确认删除", "Confirm Delete")}</h3>
-              <p style={{ color: "var(--text-muted)", margin: "16px 0" }}>
-                {t("确定要删除这个联赛吗？", "Are you sure you want to delete this league?")}
-              </p>
+              <p style={{ color: "var(--text-muted)", margin: "16px 0" }}>{t("确定要删除这个联赛吗？", "Are you sure you want to delete this league?")}</p>
               <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-                <button className="btn btn-ghost" onClick={() => setShowDeleteModal(null)}>
-                  {t("取消", "Cancel")}
-                </button>
-                <button className="btn btn-danger" onClick={() => handleDeleteLeague(showDeleteModal)}>
-                  {t("删除", "Delete")}
-                </button>
+                <button className="btn btn-ghost" onClick={() => setShowDeleteModal(null)}>{t("取消", "Cancel")}</button>
+                <button className="btn btn-danger" onClick={() => handleDeleteLeague(showDeleteModal)}>{t("删除", "Delete")}</button>
               </div>
             </div>
           </div>
@@ -561,389 +430,72 @@ export default function UserProfilePage() {
       </main>
 
       <style jsx>{`
-        .profile-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 24px;
-          margin-bottom: 32px;
-          flex-wrap: wrap;
-        }
-        .profile-main {
-          display: flex;
-          gap: 24px;
-          align-items: flex-start;
-        }
-        .avatar-section {
-          position: relative;
-        }
-        .avatar {
-          width: 100px;
-          height: 100px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #f59e0b, #d97706);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 40px;
-          font-weight: 700;
-          color: #000;
-        }
-        .primary-badge {
-          position: absolute;
-          bottom: 0;
-          right: 0;
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          border: 3px solid var(--bg-primary);
-        }
-        .profile-info {
-          flex: 1;
-        }
-        .name-row {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 4px;
-        }
-        .username {
-          font-size: 28px;
-          font-weight: 700;
-        }
-        .verified-badge {
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          background: var(--accent);
-          color: #000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 14px;
-          font-weight: 700;
-        }
-        .bio {
-          color: var(--text-muted);
-          margin-bottom: 16px;
-        }
-        .stats-row {
-          display: flex;
-          gap: 24px;
-        }
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-        }
-        .stat-value {
-          font-size: 20px;
-          font-weight: 700;
-        }
-        .stat-label {
-          font-size: 13px;
-          color: var(--text-muted);
-        }
-        .badges-section {
-          margin-bottom: 32px;
-        }
-        .section-title {
-          font-size: 16px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
-        .badges-grid {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-        }
-        .badge-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          background: var(--bg-card);
-          border: 2px solid;
-          border-radius: 12px;
-          padding: 12px 16px;
-        }
-        .badge-icon {
-          font-size: 24px;
-        }
-        .badge-info {
-          display: flex;
-          flex-direction: column;
-        }
-        .badge-name {
-          font-weight: 600;
-          font-size: 14px;
-        }
-        .badge-desc {
-          font-size: 12px;
-          color: var(--text-muted);
-        }
-        .tabs-container {
-          display: flex;
-          gap: 4px;
-          border-bottom: 1px solid var(--border-color);
-          margin-bottom: 24px;
-          overflow-x: auto;
-        }
-        .tab-btn {
-          padding: 12px 20px;
-          background: none;
-          border: none;
-          color: var(--text-muted);
-          font-weight: 500;
-          cursor: pointer;
-          border-bottom: 2px solid transparent;
-          white-space: nowrap;
-          transition: all 0.2s;
-        }
-        .tab-btn:hover {
-          color: var(--text-primary);
-        }
-        .tab-btn.active {
-          color: var(--accent);
-          border-bottom-color: var(--accent);
-        }
-        .empty-state {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 60px 20px;
-          text-align: center;
-        }
-        .empty-icon {
-          font-size: 48px;
-          margin-bottom: 16px;
-        }
-        .empty-state p {
-          color: var(--text-muted);
-          margin-bottom: 8px;
-        }
-        .empty-hint {
-          font-size: 14px;
-          margin-bottom: 20px !important;
-        }
-        .posts-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: 20px;
-        }
-        .post-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          overflow: hidden;
-          text-decoration: none;
-          color: inherit;
-          transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .post-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 12px 24px rgba(0,0,0,0.2);
-        }
-        .post-cover {
-          height: 160px;
-          background-size: cover;
-          background-position: center;
-          position: relative;
-        }
-        .post-heat {
-          position: absolute;
-          top: 12px;
-          right: 12px;
-          background: rgba(0,0,0,0.6);
-          padding: 4px 10px;
-          border-radius: 12px;
-          font-size: 13px;
-        }
-        .post-info {
-          padding: 16px;
-        }
-        .post-title {
-          font-size: 16px;
-          font-weight: 600;
-          margin-bottom: 8px;
-          line-height: 1.4;
-        }
-        .post-meta {
-          display: flex;
-          justify-content: space-between;
-          font-size: 13px;
-          color: var(--text-muted);
-        }
-        .post-tag {
-          color: var(--accent);
-        }
-        .leagues-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .league-card {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 16px 20px;
-        }
-        .league-info {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          text-decoration: none;
-          color: inherit;
-          flex: 1;
-        }
-        .league-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 12px;
-          background: var(--bg-secondary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-        }
-        .league-name {
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-        .league-meta {
-          display: flex;
-          gap: 12px;
-          font-size: 13px;
-          color: var(--text-muted);
-        }
-        .league-visibility {
-          color: var(--accent);
-        }
-        .delete-btn {
-          background: none;
-          border: none;
-          font-size: 18px;
-          cursor: pointer;
-          opacity: 0.5;
-          padding: 8px;
-          transition: opacity 0.2s;
-        }
-        .delete-btn:hover {
-          opacity: 1;
-        }
-        .drafts-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .draft-card {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 16px 20px;
-        }
-        .draft-rank {
-          width: 48px;
-          height: 48px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 700;
-          font-size: 18px;
-          color: #000;
-        }
-        .draft-info {
-          flex: 1;
-        }
-        .draft-league {
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-        .draft-meta {
-          display: flex;
-          gap: 8px;
-          font-size: 13px;
-          color: var(--text-muted);
-        }
-        .draft-result {
-          font-weight: 600;
-        }
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: 16px;
-        }
-        .stat-card {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 20px;
-        }
-        .stat-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 12px;
-          background: var(--bg-secondary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-        }
-        .stat-content {
-          display: flex;
-          flex-direction: column;
-        }
-        .stat-number {
-          font-size: 24px;
-          font-weight: 700;
-        }
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0,0,0,0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-        }
-        .modal-content {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 12px;
-          padding: 24px;
-          max-width: 400px;
-          width: 90%;
-        }
+        .profile-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+        .profile-main { display: flex; gap: 24px; align-items: flex-start; }
+        .avatar-section { position: relative; }
+        .avatar { width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #f59e0b, #d97706); display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 700; color: #000; }
+        .primary-badge { position: absolute; bottom: 0; right: 0; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; border: 3px solid var(--bg-primary); }
+        .name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .username { font-size: 28px; font-weight: 700; }
+        .verified-badge { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #000; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+        .bio { color: var(--text-muted); margin-bottom: 16px; }
+        .stats-row { display: flex; gap: 24px; }
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-value { font-size: 20px; font-weight: 700; }
+        .stat-label { font-size: 13px; color: var(--text-muted); }
+        .badges-section { margin-bottom: 32px; }
+        .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+        .badges-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+        .badge-item { display: flex; align-items: center; gap: 12px; background: var(--bg-card); border: 2px solid; border-radius: 12px; padding: 12px 16px; }
+        .badge-icon { font-size: 24px; }
+        .badge-info { display: flex; flex-direction: column; }
+        .badge-name { font-weight: 600; font-size: 14px; }
+        .badge-desc { font-size: 12px; color: var(--text-muted); }
+        .tabs-container { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; overflow-x: auto; }
+        .tab-btn { padding: 12px 20px; background: none; border: none; color: var(--text-muted); font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s; }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .empty-state { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 60px 20px; text-align: center; }
+        .empty-icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state p { color: var(--text-muted); margin-bottom: 8px; }
+        .empty-hint { font-size: 14px; margin-bottom: 20px !important; }
+        .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .post-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; text-decoration: none; color: inherit; transition: transform 0.2s, box-shadow 0.2s; }
+        .post-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.2); }
+        .post-cover { height: 160px; background-size: cover; background-position: center; position: relative; }
+        .post-heat { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 12px; font-size: 13px; }
+        .post-info { padding: 16px; }
+        .post-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
+        .post-meta { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
+        .post-tag { color: var(--accent); }
+        .leagues-list { display: flex; flex-direction: column; gap: 12px; }
+        .league-card { display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 20px; }
+        .league-info { display: flex; align-items: center; gap: 16px; text-decoration: none; color: inherit; flex: 1; }
+        .league-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .league-name { font-weight: 600; margin-bottom: 4px; }
+        .league-meta { display: flex; gap: 12px; font-size: 13px; color: var(--text-muted); }
+        .league-visibility { color: var(--accent); }
+        .delete-btn { background: none; border: none; font-size: 18px; cursor: pointer; opacity: 0.5; padding: 8px; transition: opacity 0.2s; }
+        .delete-btn:hover { opacity: 1; }
+        .drafts-list { display: flex; flex-direction: column; gap: 12px; }
+        .draft-card { display: flex; align-items: center; gap: 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 20px; }
+        .draft-rank { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #000; }
+        .draft-info { flex: 1; }
+        .draft-league { font-weight: 600; margin-bottom: 4px; }
+        .draft-meta { display: flex; gap: 8px; font-size: 13px; color: var(--text-muted); }
+        .draft-result { font-weight: 600; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+        .stat-card { display: flex; align-items: center; gap: 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
+        .stat-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .stat-content { display: flex; flex-direction: column; }
+        .stat-number { font-size: 24px; font-weight: 700; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; }
         @media (max-width: 640px) {
-          .profile-main {
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-          }
-          .stats-row {
-            justify-content: center;
-          }
-          .profile-actions {
-            width: 100%;
-          }
-          .profile-actions .btn {
-            width: 100%;
-          }
+          .profile-main { flex-direction: column; align-items: center; text-align: center; }
+          .stats-row { justify-content: center; }
+          .profile-actions { width: 100%; }
+          .profile-actions .btn { width: 100%; }
         }
       `}</style>
     </div>

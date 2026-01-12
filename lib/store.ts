@@ -294,7 +294,7 @@ export function createInsight(input: {
     title: input.title.trim(),
     body: input.body.trim(),
     leagueSlug: input.leagueSlug,
-    author: user.name,
+    author: user.username,
     createdAt: Date.now(),
     heat: Math.floor(80 + Math.random() * 200),
   };
@@ -324,7 +324,7 @@ export function addComment(insightId: string, body: string) {
   const comment: Comment = {
     id: uid("c"),
     insightId,
-    author: user.name,
+    author: user.username,
     body: body.trim(),
     createdAt: Date.now(),
   };
