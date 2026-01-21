@@ -20,8 +20,8 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
 
-    const res = signup(name, email, password);
-    
+    const res = await signup(name, email, password);
+        
     if (!res.ok) {
       setError(res.error || t("注册失败", "Signup failed"));
       setLoading(false);
