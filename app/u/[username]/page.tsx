@@ -320,7 +320,7 @@ export default function UserProfilePage() {
                         <div className="post-info">
                           <h3 className="post-title">{insight.title}</h3>
                           <div className="post-meta">
-                            <span>{formatDate(insight.createdAt)}</span>
+                          <span>{formatDate((insight as any).created_at || (insight as any).createdAt)}</span>
                             {parsed.tags && parsed.tags[0] && <span className="post-tag">#{parsed.tags[0]}</span>}
                           </div>
                         </div>
