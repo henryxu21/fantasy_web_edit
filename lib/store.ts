@@ -617,13 +617,28 @@
 
    // 获取联赛成员列表
    export async function getLeagueMembers(leagueId: string): Promise<LeagueMember[]> {
-     const { data, error } = await supabase
+     // 先获取成员列表
+     const { data: members, error } = await supabase
        .from("league_members")
-       .select(`*, user:users(id, name, username, avatar_url)`)
+       .select("*")
        .eq("league_id", leagueId)
        .order("joined_at", { ascending: true });
-     if (error) return [];
-     return data || [];
+     
+     if (error || !members) return [];
+
+     // 获取所有用户 ID
+     const userIds = members.map(m => m.user_id);
+     
+     // 获取用户信息
+     const { data: users } = await supabase
+       .from("users")
+       .select("id, name, username, avatar_url");
+     
+     // 手动关联
+     return members.map(member => ({
+       ...member,
+       user: users?.find(u => u.id === member.user_id) || undefined,
+     }));
    }
 
    // 获取联赛成员数量
