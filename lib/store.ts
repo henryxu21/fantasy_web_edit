@@ -5,7 +5,7 @@
    - Drafts, Watchlist, MyTeams, Players → localStorage
    ========================================================= */
 
-   import { supabase } from "./supabase";
+   export { supabase } from "./supabase";
    import { ALL_PLAYERS } from "./players-data";
    
    // ==================== Types ====================
