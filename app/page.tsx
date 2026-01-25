@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import { useLang } from "@/lib/lang";
-import { listInsights, listLeagues, Insight, League } from "@/lib/store";
+import { listInsights, Insight } from "@/lib/store";
 
 const CATEGORIES = [
   { id: "all", label: "推荐", labelEn: "For You" },
@@ -18,30 +18,18 @@ const CATEGORIES = [
 export default function HomePage() {
   const { t, lang } = useLang();
   const [insights, setInsights] = useState<Insight[]>([]);
-  const [leagues, setLeagues] = useState<League[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [insightsData, leaguesData] = await Promise.all([
-          listInsights(),
-          listLeagues(),
-        ]);
-        
+        const insightsData = await listInsights();
         setInsights(
           insightsData.sort(
             (a, b) =>
               new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           )
-        );
-        
-        // 只取公开联赛，最多显示 5 个
-        setLeagues(
-          leaguesData
-            .filter(l => l.visibility === "public")
-            .slice(0, 5)
         );
       } catch (e) {
         console.error(e);
@@ -113,31 +101,24 @@ export default function HomePage() {
         </nav>
 
         <div className="feed-container">
-          {/* 联赛入口 */}
-          <div className="leagues-section">
-            <div className="section-header">
-              <h2>{t("🏆 公开联赛", "🏆 Public Leagues")}</h2>
-              <Link href="/leagues" className="see-all">
-                {t("查看全部", "See All")} →
-              </Link>
+          {/* 联赛入口卡片 - ESPN 风格 */}
+          <div className="league-entry-card">
+            <div className="league-entry-left">
+              <div className="league-badge">🏀</div>
+              <div className="league-entry-text">
+                <h2>{t("准备好加入联赛了吗？", "READY TO JOIN A LEAGUE?")}</h2>
+                <p>{t("蓝本 Fantasy 篮球平台", "The #1 Fantasy Basketball Platform")}</p>
+              </div>
             </div>
-            
-            <div className="leagues-row">
-              {leagues.length === 0 ? (
-                <div className="no-leagues">
-                  <p>{t("还没有公开联赛", "No public leagues yet")}</p>
-                </div>
-              ) : (
-                leagues.map(league => (
-                  <Link href={`/league/${league.slug}`} key={league.id} className="league-item">
-                    <span className="league-icon">🏆</span>
-                    <span className="league-name">{league.name}</span>
-                  </Link>
-                ))
-              )}
-              <Link href="/leagues/new" className="league-item create-league">
-                <span className="league-icon">+</span>
-                <span className="league-name">{t("创建联赛", "Create")}</span>
+            <div className="league-entry-buttons">
+              <Link href="/league/new" className="entry-btn primary">
+                {t("创建联赛", "Create A League")}
+              </Link>
+              <Link href="/league" className="entry-btn secondary">
+                {t("加入公开联赛", "Join a Public League")}
+              </Link>
+              <Link href="/draft" className="entry-btn outline">
+                {t("模拟选秀练习", "Practice With a Mock Draft")}
               </Link>
             </div>
           </div>
@@ -219,103 +200,98 @@ const styles = `
     background: #0a0a0a;
   }
 
-  /* 联赛入口 */
-  .leagues-section {
+  /* 联赛入口卡片 - ESPN 风格 */
+  .league-entry-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
     margin-bottom: 24px;
-    padding: 20px;
-    background: #111;
-    border: 1px solid #1a1a1a;
+    padding: 28px 32px;
+    background: linear-gradient(135deg, #1a237e 0%, #0d1442 100%);
+    border: 1px solid #283593;
     border-radius: 16px;
   }
 
-  .section-header {
+  .league-entry-left {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    gap: 20px;
   }
 
-  .section-header h2 {
-    font-size: 18px;
-    font-weight: 600;
+  .league-badge {
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, #1565c0, #0d47a1);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    border: 2px solid #42a5f5;
+  }
+
+  .league-entry-text h2 {
+    font-size: 20px;
+    font-weight: 700;
     color: #fff;
+    margin: 0 0 6px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .league-entry-text p {
+    font-size: 14px;
+    color: #90caf9;
     margin: 0;
   }
 
-  .see-all {
-    font-size: 14px;
-    color: #f59e0b;
-    text-decoration: none;
-  }
-
-  .see-all:hover {
-    text-decoration: underline;
-  }
-
-  .leagues-row {
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 8px;
-    scrollbar-width: none;
-  }
-
-  .leagues-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .league-item {
+  .league-entry-buttons {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 20px;
-    background: #1a1a1a;
-    border: 1px solid #222;
-    border-radius: 12px;
+    gap: 10px;
+    min-width: 220px;
+  }
+
+  .entry-btn {
+    display: block;
+    padding: 12px 24px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
     text-decoration: none;
-    color: inherit;
-    min-width: 100px;
     transition: all 0.2s;
   }
 
-  .league-item:hover {
-    border-color: #f59e0b;
-    transform: translateY(-2px);
+  .entry-btn.primary {
+    background: #f59e0b;
+    color: #000;
   }
 
-  .league-item .league-icon {
-    font-size: 24px;
+  .entry-btn.primary:hover {
+    background: #fbbf24;
+    transform: scale(1.02);
   }
 
-  .league-item .league-name {
-    font-size: 13px;
-    color: #ccc;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 80px;
+  .entry-btn.secondary {
+    background: #e0e0e0;
+    color: #1a1a1a;
   }
 
-  .league-item.create-league {
-    border-style: dashed;
-    border-color: #333;
+  .entry-btn.secondary:hover {
+    background: #fff;
   }
 
-  .league-item.create-league .league-icon {
-    color: #f59e0b;
+  .entry-btn.outline {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
   }
 
-  .league-item.create-league:hover {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.1);
-  }
-
-  .no-leagues {
-    padding: 20px;
-    color: #666;
-    font-size: 14px;
+  .entry-btn.outline:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.5);
   }
 
   /* 分类导航 */
@@ -603,6 +579,20 @@ const styles = `
     .grid {
       grid-template-columns: repeat(3, 1fr);
     }
+
+    .league-entry-card {
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .league-entry-left {
+      flex-direction: column;
+    }
+
+    .league-entry-buttons {
+      width: 100%;
+      max-width: 280px;
+    }
   }
 
   @media (max-width: 600px) {
@@ -613,6 +603,20 @@ const styles = `
 
     .post-title {
       font-size: 13px;
+    }
+
+    .league-entry-card {
+      padding: 20px;
+    }
+
+    .league-entry-text h2 {
+      font-size: 16px;
+    }
+
+    .league-badge {
+      width: 56px;
+      height: 56px;
+      font-size: 28px;
     }
   }
 `;
