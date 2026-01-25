@@ -594,7 +594,105 @@
      if (error) {
        return { ok: false as const, error: error.message };
      }
+
+     // 创建者自动成为成员（owner）
+     await supabase.from("league_members").insert({
+       league_id: data.id,
+       user_id: user.id,
+       role: "owner",
+     });
+
      return { ok: true as const, league: data };
+   }
+
+   // 联赛成员类型
+   export type LeagueMember = {
+     id: string;
+     league_id: string;
+     user_id: string;
+     role: "owner" | "member";
+     joined_at: string;
+     user?: User;
+   };
+
+   // 获取联赛成员列表
+   export async function getLeagueMembers(leagueId: string): Promise<LeagueMember[]> {
+     const { data, error } = await supabase
+       .from("league_members")
+       .select(`*, user:users(id, name, username, avatar_url)`)
+       .eq("league_id", leagueId)
+       .order("joined_at", { ascending: true });
+     if (error) return [];
+     return data || [];
+   }
+
+   // 获取联赛成员数量
+   export async function getLeagueMemberCount(leagueId: string): Promise<number> {
+     const { count, error } = await supabase
+       .from("league_members")
+       .select("*", { count: "exact", head: true })
+       .eq("league_id", leagueId);
+     if (error) return 0;
+     return count || 0;
+   }
+
+   // 检查用户是否已加入联赛
+   export async function isLeagueMember(leagueId: string): Promise<boolean> {
+     const user = getSessionUser();
+     if (!user) return false;
+
+     const { data, error } = await supabase
+       .from("league_members")
+       .select("id")
+       .eq("league_id", leagueId)
+       .eq("user_id", user.id)
+       .single();
+
+     return !!data && !error;
+   }
+
+   // 加入联赛
+   export async function joinLeague(leagueId: string) {
+     const user = getSessionUser();
+     if (!user) return { ok: false as const, error: "Login required" };
+
+     // 检查是否已经是成员
+     const isMember = await isLeagueMember(leagueId);
+     if (isMember) {
+       return { ok: false as const, error: "Already a member" };
+     }
+
+     const { data, error } = await supabase
+       .from("league_members")
+       .insert({
+         league_id: leagueId,
+         user_id: user.id,
+         role: "member",
+       })
+       .select()
+       .single();
+
+     if (error) {
+       return { ok: false as const, error: error.message };
+     }
+     return { ok: true as const, member: data };
+   }
+
+   // 退出联赛
+   export async function leaveLeague(leagueId: string) {
+     const user = getSessionUser();
+     if (!user) return { ok: false as const, error: "Login required" };
+
+     const { error } = await supabase
+       .from("league_members")
+       .delete()
+       .eq("league_id", leagueId)
+       .eq("user_id", user.id);
+
+     if (error) {
+       return { ok: false as const, error: error.message };
+     }
+     return { ok: true as const };
    }
    
    // ==================== Stats (Supabase) ====================
