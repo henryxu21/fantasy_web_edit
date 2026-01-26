@@ -3,46 +3,60 @@
 import { useState, useEffect, useMemo } from "react";
 import Header from "@/components/Header";
 import { useLang } from "@/lib/lang";
-import { 
-  getActivePlayers, 
-  getPlayerStats, 
-  getAllInjuries,
-  BDLPlayer, 
-  BDLGameStats,
-  BDLInjury 
-} from "@/lib/balldontlie";
 
-type PlayerWithStats = {
-  id: string;
-  bdl_id: number;
+// API 配置
+const API_BASE = "https://api.balldontlie.io/v1";
+const API_KEY = "14fd7de0-c9c0-40d3-bbeb-e8c86a61d56a";
+
+// 类型定义
+type BDLTeam = {
+  id: number;
+  abbreviation: string;
+  full_name: string;
+};
+
+type BDLPlayer = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  position: string;
+  height: string;
+  weight: string;
+  jersey_number: string;
+  team: BDLTeam;
+};
+
+type BDLInjury = {
+  player: BDLPlayer;
+  return_date: string;
+  description: string;
+  status: string;
+};
+
+type PlayerDisplay = {
+  id: number;
   name: string;
   team: string;
   position: string;
-  ppg: number;
-  rpg: number;
-  apg: number;
-  spg: number;
-  bpg: number;
-  fg_pct: number;
-  ft_pct: number;
-  fg3_pct: number;
-  gp: number;
+  height: string;
+  weight: string;
+  jersey: string;
   injury?: string;
+  injuryDesc?: string;
 };
 
-type SortKey = "name" | "ppg" | "rpg" | "apg" | "spg" | "bpg" | "fg_pct" | "gp";
+type SortKey = "name" | "team" | "position";
 
 export default function PlayerRankingsPage() {
   const { t } = useLang();
-  const [players, setPlayers] = useState<PlayerWithStats[]>([]);
-  const [injuries, setInjuries] = useState<Map<number, BDLInjury>>(new Map());
+  const [players, setPlayers] = useState<PlayerDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [positionFilter, setPositionFilter] = useState<string>("all");
   const [teamFilter, setTeamFilter] = useState<string>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("ppg");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
@@ -55,98 +69,55 @@ export default function PlayerRankingsPage() {
     setError(null);
 
     try {
-      // 1. 获取现役球员列表
-      const playersResponse = await getActivePlayers({ per_page: 100 });
-      const bdlPlayers = playersResponse.data;
+      // 1. 获取现役球员 (ALL-STAR 可用)
+      const playersRes = await fetch(`${API_BASE}/players/active?per_page=100`, {
+        headers: { Authorization: API_KEY },
+      });
+      
+      if (!playersRes.ok) {
+        throw new Error(`Players API Error: ${playersRes.status}`);
+      }
+      
+      const playersData = await playersRes.json();
+      const bdlPlayers: BDLPlayer[] = playersData.data || [];
 
-      // 2. 获取伤病信息
-      const injuriesResponse = await getAllInjuries();
+      // 2. 获取伤病信息 (ALL-STAR 可用)
+      let injuries: BDLInjury[] = [];
+      try {
+        const injuriesRes = await fetch(`${API_BASE}/player_injuries?per_page=100`, {
+          headers: { Authorization: API_KEY },
+        });
+        if (injuriesRes.ok) {
+          const injuriesData = await injuriesRes.json();
+          injuries = injuriesData.data || [];
+        }
+      } catch (e) {
+        console.log("Injuries fetch failed, continuing without injury data");
+      }
+
+      // 创建伤病映射
       const injuryMap = new Map<number, BDLInjury>();
-      injuriesResponse.forEach(injury => {
-        injuryMap.set(injury.player.id, injury);
-      });
-      setInjuries(injuryMap);
-
-      // 3. 获取球员统计数据 (2024赛季)
-      const playerIds = bdlPlayers.map(p => p.id);
-      const statsResponse = await getPlayerStats({
-        player_ids: playerIds.slice(0, 25), // API 限制，先获取前25个
-        seasons: [2024],
-        per_page: 100,
+      injuries.forEach(inj => {
+        injuryMap.set(inj.player.id, inj);
       });
 
-      // 4. 计算每个球员的平均数据
-      const statsMap = new Map<number, BDLGameStats[]>();
-      statsResponse.data.forEach(stat => {
-        const playerId = stat.player.id;
-        if (!statsMap.has(playerId)) {
-          statsMap.set(playerId, []);
-        }
-        statsMap.get(playerId)!.push(stat);
-      });
-
-      // 5. 转换为 PlayerWithStats 格式
-      const playersWithStats: PlayerWithStats[] = bdlPlayers.map(player => {
-        const playerStats = statsMap.get(player.id) || [];
-        const gp = playerStats.length;
-
-        if (gp === 0) {
-          return {
-            id: player.id.toString(),
-            bdl_id: player.id,
-            name: `${player.first_name} ${player.last_name}`,
-            team: player.team?.abbreviation || "FA",
-            position: player.position || "N/A",
-            ppg: 0,
-            rpg: 0,
-            apg: 0,
-            spg: 0,
-            bpg: 0,
-            fg_pct: 0,
-            ft_pct: 0,
-            fg3_pct: 0,
-            gp: 0,
-            injury: injuryMap.get(player.id)?.status,
-          };
-        }
-
-        const totals = playerStats.reduce(
-          (acc, game) => ({
-            pts: acc.pts + game.pts,
-            reb: acc.reb + game.reb,
-            ast: acc.ast + game.ast,
-            stl: acc.stl + game.stl,
-            blk: acc.blk + game.blk,
-            fgm: acc.fgm + game.fgm,
-            fga: acc.fga + game.fga,
-            ftm: acc.ftm + game.ftm,
-            fta: acc.fta + game.fta,
-            fg3m: acc.fg3m + game.fg3m,
-            fg3a: acc.fg3a + game.fg3a,
-          }),
-          { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, fg3m: 0, fg3a: 0 }
-        );
-
+      // 3. 转换数据格式
+      const displayPlayers: PlayerDisplay[] = bdlPlayers.map(p => {
+        const injury = injuryMap.get(p.id);
         return {
-          id: player.id.toString(),
-          bdl_id: player.id,
-          name: `${player.first_name} ${player.last_name}`,
-          team: player.team?.abbreviation || "FA",
-          position: player.position || "N/A",
-          ppg: Number((totals.pts / gp).toFixed(1)),
-          rpg: Number((totals.reb / gp).toFixed(1)),
-          apg: Number((totals.ast / gp).toFixed(1)),
-          spg: Number((totals.stl / gp).toFixed(1)),
-          bpg: Number((totals.blk / gp).toFixed(1)),
-          fg_pct: totals.fga > 0 ? Number(((totals.fgm / totals.fga) * 100).toFixed(1)) : 0,
-          ft_pct: totals.fta > 0 ? Number(((totals.ftm / totals.fta) * 100).toFixed(1)) : 0,
-          fg3_pct: totals.fg3a > 0 ? Number(((totals.fg3m / totals.fg3a) * 100).toFixed(1)) : 0,
-          gp,
-          injury: injuryMap.get(player.id)?.status,
+          id: p.id,
+          name: `${p.first_name} ${p.last_name}`,
+          team: p.team?.abbreviation || "FA",
+          position: p.position || "N/A",
+          height: p.height || "-",
+          weight: p.weight ? `${p.weight} lbs` : "-",
+          jersey: p.jersey_number || "-",
+          injury: injury?.status,
+          injuryDesc: injury?.description,
         };
       });
 
-      setPlayers(playersWithStats);
+      setPlayers(displayPlayers);
     } catch (err: any) {
       console.error("Error loading data:", err);
       setError(err.message || "Failed to load data");
@@ -168,7 +139,7 @@ export default function PlayerRankingsPage() {
     // 搜索
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      result = result.filter(p => 
+      result = result.filter(p =>
         p.name.toLowerCase().includes(term) ||
         p.team.toLowerCase().includes(term)
       );
@@ -188,14 +159,11 @@ export default function PlayerRankingsPage() {
     result = [...result].sort((a, b) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
-      if (typeof aVal === "string" && typeof bVal === "string") {
-        return sortOrder === "asc" 
-          ? aVal.localeCompare(bVal) 
-          : bVal.localeCompare(aVal);
+      if (sortOrder === "asc") {
+        return aVal.localeCompare(bVal);
+      } else {
+        return bVal.localeCompare(aVal);
       }
-      return sortOrder === "asc" 
-        ? (aVal as number) - (bVal as number)
-        : (bVal as number) - (aVal as number);
     });
 
     return result;
@@ -209,12 +177,15 @@ export default function PlayerRankingsPage() {
 
   const totalPages = Math.ceil(filteredPlayers.length / pageSize);
 
+  // 统计伤病数量
+  const injuredCount = players.filter(p => p.injury).length;
+
   function handleSort(key: SortKey) {
     if (sortKey === key) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
       setSortKey(key);
-      setSortOrder("desc");
+      setSortOrder("asc");
     }
   }
 
@@ -230,7 +201,7 @@ export default function PlayerRankingsPage() {
         <main className="page-content">
           <div className="loading-container">
             <div className="loading-spinner">🏀</div>
-            <p>{t("正在从 Ball Don't Lie API 加载数据...", "Loading data from Ball Don't Lie API...")}</p>
+            <p>{t("正在加载球员数据...", "Loading player data...")}</p>
           </div>
         </main>
         <style jsx>{styles}</style>
@@ -265,11 +236,11 @@ export default function PlayerRankingsPage() {
             <div className="header-info">
               <h1>🏀 {t("球员排名", "Player Rankings")}</h1>
               <p className="api-badge">
-                ⚡ Powered by Ball Don't Lie API • 2024-25 Season
+                ⚡ Powered by Ball Don't Lie API • {t("现役球员", "Active Players")}
               </p>
             </div>
             <button onClick={loadData} className="refresh-btn">
-              🔄 {t("刷新数据", "Refresh")}
+              🔄 {t("刷新", "Refresh")}
             </button>
           </div>
 
@@ -284,8 +255,8 @@ export default function PlayerRankingsPage() {
                 onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
               />
             </div>
-            <select 
-              value={positionFilter} 
+            <select
+              value={positionFilter}
               onChange={(e) => { setPositionFilter(e.target.value); setPage(1); }}
               className="filter-select"
             >
@@ -294,8 +265,8 @@ export default function PlayerRankingsPage() {
               <option value="F">{t("前锋 (F)", "Forward (F)")}</option>
               <option value="C">{t("中锋 (C)", "Center (C)")}</option>
             </select>
-            <select 
-              value={teamFilter} 
+            <select
+              value={teamFilter}
               onChange={(e) => { setTeamFilter(e.target.value); setPage(1); }}
               className="filter-select"
             >
@@ -308,8 +279,8 @@ export default function PlayerRankingsPage() {
 
           {/* 统计信息 */}
           <div className="stats-bar">
-            <span>{t(`共 ${filteredPlayers.length} 名球员`, `${filteredPlayers.length} players`)}</span>
-            <span>{t(`${injuries.size} 名伤病球员`, `${injuries.size} injured`)}</span>
+            <span>👥 {filteredPlayers.length} {t("名球员", "players")}</span>
+            <span>🏥 {injuredCount} {t("名伤病", "injured")}</span>
           </div>
 
           {/* 球员表格 */}
@@ -321,13 +292,16 @@ export default function PlayerRankingsPage() {
                   <th className="name-col" onClick={() => handleSort("name")}>
                     {t("球员", "Player")} <SortIcon column="name" />
                   </th>
-                  <th onClick={() => handleSort("ppg")}>PPG <SortIcon column="ppg" /></th>
-                  <th onClick={() => handleSort("rpg")}>RPG <SortIcon column="rpg" /></th>
-                  <th onClick={() => handleSort("apg")}>APG <SortIcon column="apg" /></th>
-                  <th onClick={() => handleSort("spg")}>SPG <SortIcon column="spg" /></th>
-                  <th onClick={() => handleSort("bpg")}>BPG <SortIcon column="bpg" /></th>
-                  <th onClick={() => handleSort("fg_pct")}>FG% <SortIcon column="fg_pct" /></th>
-                  <th onClick={() => handleSort("gp")}>GP <SortIcon column="gp" /></th>
+                  <th onClick={() => handleSort("team")}>
+                    {t("球队", "Team")} <SortIcon column="team" />
+                  </th>
+                  <th onClick={() => handleSort("position")}>
+                    {t("位置", "Pos")} <SortIcon column="position" />
+                  </th>
+                  <th>{t("身高", "Height")}</th>
+                  <th>{t("体重", "Weight")}</th>
+                  <th>{t("球衣", "Jersey")}</th>
+                  <th>{t("状态", "Status")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -335,25 +309,24 @@ export default function PlayerRankingsPage() {
                   <tr key={player.id} className={player.injury ? "injured" : ""}>
                     <td className="rank-col">{(page - 1) * pageSize + index + 1}</td>
                     <td className="name-col">
-                      <div className="player-info">
-                        <span className="player-name">{player.name}</span>
-                        <span className="player-meta">
-                          {player.team} • {player.position}
-                          {player.injury && (
-                            <span className="injury-badge" title={player.injury}>
-                              🏥 {player.injury}
-                            </span>
-                          )}
-                        </span>
-                      </div>
+                      <span className="player-name">{player.name}</span>
                     </td>
-                    <td className="stat-highlight">{player.ppg}</td>
-                    <td>{player.rpg}</td>
-                    <td>{player.apg}</td>
-                    <td>{player.spg}</td>
-                    <td>{player.bpg}</td>
-                    <td>{player.fg_pct}%</td>
-                    <td>{player.gp}</td>
+                    <td>
+                      <span className="team-badge">{player.team}</span>
+                    </td>
+                    <td>{player.position}</td>
+                    <td>{player.height}</td>
+                    <td>{player.weight}</td>
+                    <td>#{player.jersey}</td>
+                    <td>
+                      {player.injury ? (
+                        <span className="injury-badge" title={player.injuryDesc}>
+                          🏥 {player.injury}
+                        </span>
+                      ) : (
+                        <span className="healthy-badge">✓ {t("健康", "Healthy")}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -363,7 +336,7 @@ export default function PlayerRankingsPage() {
           {/* 分页 */}
           {totalPages > 1 && (
             <div className="pagination">
-              <button 
+              <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
               >
@@ -372,7 +345,7 @@ export default function PlayerRankingsPage() {
               <span className="page-info">
                 {page} / {totalPages}
               </span>
-              <button 
+              <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
               >
@@ -380,6 +353,16 @@ export default function PlayerRankingsPage() {
               </button>
             </div>
           )}
+
+          {/* API 说明 */}
+          <div className="api-note">
+            <p>
+              💡 {t(
+                "ALL-STAR 订阅显示现役球员和伤病信息。升级到 GOAT 可获取详细统计数据。",
+                "ALL-STAR tier shows active players & injuries. Upgrade to GOAT for detailed stats."
+              )}
+            </p>
+          </div>
         </div>
       </main>
       <style jsx>{styles}</style>
@@ -395,7 +378,7 @@ const styles = `
   }
 
   .container {
-    max-width: 1200px;
+    max-width: 1100px;
     margin: 0 auto;
   }
 
@@ -404,6 +387,8 @@ const styles = `
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
   }
 
   .header-info h1 {
@@ -427,10 +412,12 @@ const styles = `
     color: #fff;
     font-size: 14px;
     cursor: pointer;
+    transition: all 0.2s;
   }
 
   .refresh-btn:hover {
     border-color: #f59e0b;
+    color: #f59e0b;
   }
 
   .filters {
@@ -546,13 +533,7 @@ const styles = `
   }
 
   .name-col {
-    min-width: 200px;
-  }
-
-  .player-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    min-width: 180px;
   }
 
   .player-name {
@@ -560,25 +541,28 @@ const styles = `
     color: #fff;
   }
 
-  .player-meta {
+  .team-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border-radius: 4px;
     font-size: 12px;
-    color: #888;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-weight: 600;
   }
 
   .injury-badge {
-    padding: 2px 6px;
+    display: inline-block;
+    padding: 4px 8px;
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
-  .stat-highlight {
-    font-weight: 600;
-    color: #f59e0b;
+  .healthy-badge {
+    color: #22c55e;
+    font-size: 12px;
   }
 
   .pagination {
@@ -610,6 +594,21 @@ const styles = `
   .page-info {
     font-size: 14px;
     color: #888;
+  }
+
+  .api-note {
+    margin-top: 24px;
+    padding: 16px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .api-note p {
+    font-size: 13px;
+    color: #f59e0b;
+    margin: 0;
   }
 
   .loading-container, .error-container {
@@ -655,7 +654,7 @@ const styles = `
     }
 
     .players-table {
-      min-width: 700px;
+      min-width: 600px;
     }
 
     .filters {
