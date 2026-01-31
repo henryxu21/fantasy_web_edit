@@ -2,367 +2,217 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Header from "@/components/Header";
-import { useLang } from "@/lib/lang";
-import { createLeague, getSessionUser } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 
 export default function NewLeaguePage() {
-  const { t } = useLang();
   const router = useRouter();
-  const user = getSessionUser();
-
   const [name, setName] = useState("");
-  const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!user) {
-      alert(t("请先登录", "Please login first"));
-      router.push("/auth/login");
-      return;
-    }
-
     if (!name.trim()) {
-      setError(t("请输入联赛名称", "Please enter league name"));
+      setError("请输入联赛名称");
       return;
     }
 
     if (name.trim().length < 2) {
-      setError(t("联赛名称至少 2 个字符", "League name must be at least 2 characters"));
+      setError("联赛名称至少 2 个字符");
       return;
     }
 
     setSubmitting(true);
     setError(null);
 
-    const res = await createLeague({
-      name: name.trim(),
-      visibility,
-    });
+    try {
+      // 直接插入数据，使用测试用户ID
+      const testUserId = "test-user-" + Date.now();
+      
+      const { data: league, error: createError } = await supabase
+        .from('leagues')
+        .insert({
+          name: name.trim(),
+          commissioner_id: testUserId,
+          max_teams: 10,
+          draft_type: 'snake',
+        })
+        .select()
+        .single();
 
-    if (res.ok) {
-      router.push(`/league/${res.league.slug}`);
-    } else {
-      setError(res.error || t("创建失败", "Failed to create"));
+      if (createError) throw createError;
+
+      // 创建选秀设置
+      await supabase
+        .from('draft_settings')
+        .insert({
+          league_id: league.id,
+          draft_type: 'snake',
+        });
+
+      alert('联赛创建成功！ID: ' + league.id);
+      
+      // 跳转到联赛页面
+      router.push(`/league/${league.id}`);
+    } catch (err: any) {
+      console.error('Create league error:', err);
+      setError(err.message || "创建失败");
       setSubmitting(false);
     }
   }
 
-  if (!user) {
-    return (
-      <div className="app">
-        <Header />
-        <main className="new-league-page">
-          <div className="login-prompt">
-            <div className="icon">🔒</div>
-            <h2>{t("需要登录", "Login Required")}</h2>
-            <p>{t("登录后即可创建联赛", "Login to create a league")}</p>
-            <button onClick={() => router.push("/auth/login")} className="login-btn">
-              {t("去登录", "Login")}
-            </button>
-          </div>
-        </main>
-        <style jsx>{styles}</style>
-      </div>
-    );
-  }
-
   return (
-    <div className="app">
-      <Header />
-      <main className="new-league-page">
-        <div className="container">
-          <div className="card">
-            <div className="card-header">
-              <div className="icon">🏆</div>
-              <h1>{t("创建联赛", "Create League")}</h1>
-              <p>{t("创建你的 Fantasy 篮球联赛", "Create your Fantasy Basketball league")}</p>
+    <div style={{
+      minHeight: '100vh',
+      background: '#0a0a0a',
+      padding: '24px 16px'
+    }}>
+      <div style={{
+        maxWidth: '500px',
+        margin: '0 auto'
+      }}>
+        <div style={{
+          background: '#111',
+          border: '1px solid #222',
+          borderRadius: '16px',
+          padding: '32px'
+        }}>
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '32px'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏆</div>
+            <h1 style={{
+              fontSize: '24px',
+              fontWeight: '700',
+              color: '#f59e0b',
+              margin: '0 0 8px 0'
+            }}>
+              创建联赛
+            </h1>
+            <p style={{
+              fontSize: '14px',
+              color: '#666',
+              margin: 0
+            }}>
+              创建你的 Fantasy 篮球联赛
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            {/* 联赛名称 */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#fff',
+                marginBottom: '8px'
+              }}>
+                联赛名称
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="例如：2024 Fantasy 联赛"
+                maxLength={50}
+                disabled={submitting}
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  background: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  fontSize: '15px',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <div style={{
+                fontSize: '12px',
+                color: '#666',
+                textAlign: 'right',
+                marginTop: '4px'
+              }}>
+                {name.length}/50
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="form">
-              {/* 联赛名称 */}
-              <div className="form-group">
-                <label>{t("联赛名称", "League Name")}</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t("例如：2024 Fantasy 联赛", "e.g., 2024 Fantasy League")}
-                  maxLength={50}
-                  disabled={submitting}
-                />
-                <div className="char-count">{name.length}/50</div>
+            {/* 错误提示 */}
+            {error && (
+              <div style={{
+                padding: '12px 16px',
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '8px',
+                color: '#fca5a5',
+                fontSize: '14px',
+                marginBottom: '24px'
+              }}>
+                {error}
               </div>
+            )}
 
-              {/* 可见性 */}
-              <div className="form-group">
-                <label>{t("可见性", "Visibility")}</label>
-                <div className="visibility-options">
-                  <button
-                    type="button"
-                    className={`visibility-option ${visibility === "public" ? "active" : ""}`}
-                    onClick={() => setVisibility("public")}
-                    disabled={submitting}
-                  >
-                    <span className="option-icon">🌍</span>
-                    <span className="option-label">{t("公开", "Public")}</span>
-                    <span className="option-desc">{t("所有人可见", "Visible to everyone")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`visibility-option ${visibility === "private" ? "active" : ""}`}
-                    onClick={() => setVisibility("private")}
-                    disabled={submitting}
-                  >
-                    <span className="option-icon">🔒</span>
-                    <span className="option-label">{t("私密", "Private")}</span>
-                    <span className="option-desc">{t("仅邀请可见", "Invite only")}</span>
-                  </button>
-                </div>
-              </div>
+            {/* 按钮 */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              marginTop: '8px'
+            }}>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                disabled={submitting}
+                style={{
+                  flex: 1,
+                  padding: '14px',
+                  background: 'transparent',
+                  border: '1px solid #333',
+                  borderRadius: '10px',
+                  color: '#888',
+                  fontSize: '15px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={submitting || !name.trim()}
+                style={{
+                  flex: 2,
+                  padding: '14px',
+                  background: submitting || !name.trim() ? '#666' : '#f59e0b',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#000',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: submitting || !name.trim() ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {submitting ? '创建中...' : '创建联赛'}
+              </button>
+            </div>
+          </form>
 
-              {/* 错误提示 */}
-              {error && <div className="error">{error}</div>}
-
-              {/* 按钮 */}
-              <div className="actions">
-                <button
-                  type="button"
-                  className="cancel-btn"
-                  onClick={() => router.back()}
-                  disabled={submitting}
-                >
-                  {t("取消", "Cancel")}
-                </button>
-                <button
-                  type="submit"
-                  className="submit-btn"
-                  disabled={submitting || !name.trim()}
-                >
-                  {submitting ? t("创建中...", "Creating...") : t("创建联赛", "Create League")}
-                </button>
-              </div>
-            </form>
+          {/* 测试提示 */}
+          <div style={{
+            marginTop: '24px',
+            padding: '12px',
+            background: 'rgba(59, 130, 246, 0.1)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: '8px',
+            fontSize: '13px',
+            color: '#60a5fa'
+          }}>
+            ⚠️ 测试模式：使用临时用户ID创建联赛
           </div>
         </div>
-      </main>
-      <style jsx>{styles}</style>
+      </div>
     </div>
   );
 }
-
-const styles = `
-  .new-league-page {
-    min-height: 100vh;
-    background: #0a0a0a;
-    padding: 24px 16px;
-  }
-
-  .container {
-    max-width: 500px;
-    margin: 0 auto;
-  }
-
-  .card {
-    background: #111;
-    border: 1px solid #222;
-    border-radius: 16px;
-    padding: 32px;
-  }
-
-  .card-header {
-    text-align: center;
-    margin-bottom: 32px;
-  }
-
-  .card-header .icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-  }
-
-  .card-header h1 {
-    font-size: 24px;
-    font-weight: 700;
-    color: #f59e0b;
-    margin: 0 0 8px 0;
-  }
-
-  .card-header p {
-    font-size: 14px;
-    color: #666;
-    margin: 0;
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-  }
-
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .form-group label {
-    font-size: 14px;
-    font-weight: 500;
-    color: #fff;
-  }
-
-  .form-group input {
-    padding: 14px 16px;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 10px;
-    color: #fff;
-    font-size: 15px;
-    outline: none;
-  }
-
-  .form-group input:focus {
-    border-color: #f59e0b;
-  }
-
-  .char-count {
-    font-size: 12px;
-    color: #666;
-    text-align: right;
-  }
-
-  .visibility-options {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .visibility-option {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 20px 16px;
-    background: #1a1a1a;
-    border: 2px solid #333;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .visibility-option:hover {
-    border-color: #444;
-  }
-
-  .visibility-option.active {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.1);
-  }
-
-  .option-icon {
-    font-size: 24px;
-  }
-
-  .option-label {
-    font-size: 15px;
-    font-weight: 600;
-    color: #fff;
-  }
-
-  .option-desc {
-    font-size: 12px;
-    color: #666;
-  }
-
-  .error {
-    padding: 12px 16px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 8px;
-    color: #fca5a5;
-    font-size: 14px;
-  }
-
-  .actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-  }
-
-  .cancel-btn {
-    flex: 1;
-    padding: 14px;
-    background: transparent;
-    border: 1px solid #333;
-    border-radius: 10px;
-    color: #888;
-    font-size: 15px;
-    cursor: pointer;
-  }
-
-  .cancel-btn:hover {
-    background: #1a1a1a;
-  }
-
-  .submit-btn {
-    flex: 2;
-    padding: 14px;
-    background: #f59e0b;
-    border: none;
-    border-radius: 10px;
-    color: #000;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .submit-btn:hover:not(:disabled) {
-    background: #d97706;
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .login-prompt {
-    max-width: 400px;
-    margin: 80px auto;
-    text-align: center;
-    padding: 48px;
-    background: #111;
-    border: 1px solid #222;
-    border-radius: 16px;
-  }
-
-  .login-prompt .icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-  }
-
-  .login-prompt h2 {
-    font-size: 20px;
-    color: #fff;
-    margin: 0 0 8px 0;
-  }
-
-  .login-prompt p {
-    font-size: 14px;
-    color: #666;
-    margin: 0 0 24px 0;
-  }
-
-  .login-btn {
-    padding: 12px 32px;
-    background: #f59e0b;
-    border: none;
-    border-radius: 8px;
-    color: #000;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-`;

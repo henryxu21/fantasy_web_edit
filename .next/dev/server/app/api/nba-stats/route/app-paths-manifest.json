@@ -1,0 +1,3 @@
+{
+  "/api/nba-stats/route": "app/api/nba-stats/route.js"
+}

@@ -4,21 +4,6 @@ import { useState, useEffect, useMemo } from "react";
 import Header from "@/components/Header";
 import { useLang } from "@/lib/lang";
 
-// API 配置
-const API_BASE = "https://api.balldontlie.io/v1";
-const API_KEY = "14fd7de0-c9c0-40d3-bbeb-e8c86a61d56a";
-
-// ESPN 默认 Fantasy 计分规则
-const FANTASY_WEIGHTS = {
-  pts: 1,
-  reb: 1,
-  ast: 1,
-  stl: 2,
-  blk: 2,
-  fg3m: 1,
-  tov: -1,
-};
-
 type PlayerStats = {
   id: number;
   name: string;
@@ -66,36 +51,13 @@ type PlayerStats = {
 
 type SortKey = "rank" | "name" | "pts" | "reb" | "ast" | "stl" | "blk" | "fg3m" | "tov" | "fptsAvg" | "gamesPlayed";
 
-// 计算 Fantasy Points
-function calculateFantasyPoints(stats: { pts: number; reb: number; ast: number; stl: number; blk: number; fg3m: number; tov: number }): number {
-  return (
-    stats.pts * FANTASY_WEIGHTS.pts +
-    stats.reb * FANTASY_WEIGHTS.reb +
-    stats.ast * FANTASY_WEIGHTS.ast +
-    stats.stl * FANTASY_WEIGHTS.stl +
-    stats.blk * FANTASY_WEIGHTS.blk +
-    stats.fg3m * FANTASY_WEIGHTS.fg3m +
-    stats.tov * FANTASY_WEIGHTS.tov
-  );
-}
-
-// 获取最近 N 天的日期数组
-function getRecentDates(days: number): string[] {
-  const dates: string[] = [];
-  for (let i = 1; i <= days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    dates.push(date.toISOString().split("T")[0]);
-  }
-  return dates;
-}
-
 export default function PlayerRankingsPage() {
   const { t } = useLang();
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingStatus, setLoadingStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [gamesLoaded, setGamesLoaded] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [positionFilter, setPositionFilter] = useState<string>("all");
   const [teamFilter, setTeamFilter] = useState<string>("all");
@@ -103,205 +65,33 @@ export default function PlayerRankingsPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [statView, setStatView] = useState<"averages" | "totals">("averages");
   const [page, setPage] = useState(1);
-  const [gamesLoaded, setGamesLoaded] = useState(0);
   const pageSize = 20;
 
+  // 初始加载
   useEffect(() => {
     loadData();
+    // 每 5 分钟检查一次更新
+    const interval = setInterval(loadData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  async function fetchAPI(endpoint: string, params?: Record<string, string>) {
-    const url = new URL(`${API_BASE}${endpoint}`);
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value);
-      });
-    }
-
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: API_KEY },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
-    }
-
-    return response.json();
-  }
-
   async function loadData() {
-    setLoading(true);
-    setError(null);
-    setLoadingStatus(t("获取最近比赛...", "Fetching recent games..."));
-
     try {
-      // 1. 获取最近7天的已完成比赛
-      const recentDates = getRecentDates(7);
-      const allGames: any[] = [];
+      const response = await fetch("/api/nba-stats");
+      const data = await response.json();
 
-      for (const date of recentDates) {
-        setLoadingStatus(t(`获取 ${date} 的比赛...`, `Fetching games for ${date}...`));
-        
-        const gamesRes = await fetchAPI("/games", { "dates[]": date, per_page: "50" });
-        const finishedGames = (gamesRes.data || []).filter((g: any) => g.status === "Final");
-        allGames.push(...finishedGames);
-
-        // Rate limit: 60 requests/min for ALL-STAR
-        await new Promise((r) => setTimeout(r, 200));
-      }
-
-      if (allGames.length === 0) {
-        setError(t("最近没有已完成的比赛", "No finished games in recent days"));
-        setLoading(false);
+      if (data.status === "loading") {
+        // 数据正在首次加载，5秒后重试
+        setTimeout(loadData, 5000);
         return;
       }
 
-      setGamesLoaded(allGames.length);
-      setLoadingStatus(t(`找到 ${allGames.length} 场比赛，正在获取球员统计...`, `Found ${allGames.length} games, fetching player stats...`));
-
-      // 2. 获取每场比赛的球员统计
-      const playerStatsMap = new Map<number, {
-        player: any;
-        games: any[];
-      }>();
-
-      let gamesProcessed = 0;
-      for (const game of allGames) {
-        gamesProcessed++;
-        setLoadingStatus(t(
-          `处理比赛 ${gamesProcessed}/${allGames.length}: ${game.home_team.abbreviation} vs ${game.visitor_team.abbreviation}`,
-          `Processing game ${gamesProcessed}/${allGames.length}: ${game.home_team.abbreviation} vs ${game.visitor_team.abbreviation}`
-        ));
-
-        try {
-          const statsRes = await fetchAPI("/stats", { "game_ids[]": game.id.toString(), per_page: "100" });
-          const stats = statsRes.data || [];
-
-          for (const stat of stats) {
-            const playerId = stat.player.id;
-            if (!playerStatsMap.has(playerId)) {
-              playerStatsMap.set(playerId, {
-                player: stat.player,
-                games: [],
-              });
-            }
-            playerStatsMap.get(playerId)!.games.push({
-              ...stat,
-              team: stat.team,
-            });
-          }
-        } catch (e) {
-          console.error(`Failed to fetch stats for game ${game.id}:`, e);
-        }
-
-        // Rate limit
-        await new Promise((r) => setTimeout(r, 300));
+      if (data.players && data.players.length > 0) {
+        setPlayers(data.players);
+        setGamesLoaded(data.gamesLoaded);
+        setLastUpdated(data.lastUpdated);
+        setError(null);
       }
-
-      // 3. 获取伤病信息
-      setLoadingStatus(t("获取伤病信息...", "Fetching injury data..."));
-      let injuries: any[] = [];
-      try {
-        const injuriesRes = await fetchAPI("/player_injuries", { per_page: "100" });
-        injuries = injuriesRes.data || [];
-      } catch (e) {
-        console.log("Could not fetch injuries");
-      }
-
-      const injuryMap = new Map<number, string>();
-      injuries.forEach((inj) => {
-        injuryMap.set(inj.player.id, inj.status);
-      });
-
-      // 4. 计算每个球员的统计数据
-      setLoadingStatus(t("计算球员统计...", "Calculating player statistics..."));
-      
-      const playersData: PlayerStats[] = [];
-
-      playerStatsMap.forEach(({ player, games }) => {
-        if (games.length === 0) return;
-
-        // 计算总数
-        const totals = games.reduce(
-          (acc, g) => ({
-            min: acc.min + parseFloat(g.min || "0"),
-            fgm: acc.fgm + (g.fgm || 0),
-            fga: acc.fga + (g.fga || 0),
-            fg3m: acc.fg3m + (g.fg3m || 0),
-            fg3a: acc.fg3a + (g.fg3a || 0),
-            ftm: acc.ftm + (g.ftm || 0),
-            fta: acc.fta + (g.fta || 0),
-            reb: acc.reb + (g.reb || 0),
-            ast: acc.ast + (g.ast || 0),
-            stl: acc.stl + (g.stl || 0),
-            blk: acc.blk + (g.blk || 0),
-            tov: acc.tov + (g.turnover || 0),
-            pts: acc.pts + (g.pts || 0),
-          }),
-          { min: 0, fgm: 0, fga: 0, fg3m: 0, fg3a: 0, ftm: 0, fta: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pts: 0 }
-        );
-
-        const gp = games.length;
-
-        // 计算平均值
-        const averages = {
-          min: totals.min / gp,
-          fgm: totals.fgm / gp,
-          fga: totals.fga / gp,
-          fg3m: totals.fg3m / gp,
-          fg3a: totals.fg3a / gp,
-          ftm: totals.ftm / gp,
-          fta: totals.fta / gp,
-          fg_pct: totals.fga > 0 ? (totals.fgm / totals.fga) * 100 : 0,
-          fg3_pct: totals.fg3a > 0 ? (totals.fg3m / totals.fg3a) * 100 : 0,
-          ft_pct: totals.fta > 0 ? (totals.ftm / totals.fta) * 100 : 0,
-          reb: totals.reb / gp,
-          ast: totals.ast / gp,
-          stl: totals.stl / gp,
-          blk: totals.blk / gp,
-          tov: totals.tov / gp,
-          pts: totals.pts / gp,
-        };
-
-        // 计算 Fantasy Points
-        const fptsTotal = calculateFantasyPoints({
-          pts: totals.pts,
-          reb: totals.reb,
-          ast: totals.ast,
-          stl: totals.stl,
-          blk: totals.blk,
-          fg3m: totals.fg3m,
-          tov: totals.tov,
-        });
-
-        const fptsAvg = fptsTotal / gp;
-
-        // 获取最近一场比赛的球队
-        const latestGame = games[games.length - 1];
-
-        playersData.push({
-          id: player.id,
-          name: `${player.first_name} ${player.last_name}`,
-          team: latestGame.team?.abbreviation || player.team?.abbreviation || "N/A",
-          position: player.position || "N/A",
-          gamesPlayed: gp,
-          totals,
-          averages,
-          fpts: Math.round(fptsTotal * 10) / 10,
-          fptsAvg: Math.round(fptsAvg * 10) / 10,
-          rank: 0,
-          injury: injuryMap.get(player.id),
-        });
-      });
-
-      // 5. 按 Fantasy Points 平均值排序
-      playersData.sort((a, b) => b.fptsAvg - a.fptsAvg);
-      playersData.forEach((p, i) => {
-        p.rank = i + 1;
-      });
-
-      setPlayers(playersData);
-      setLoadingStatus("");
     } catch (err: any) {
       console.error("Error loading data:", err);
       setError(err.message);
@@ -312,7 +102,7 @@ export default function PlayerRankingsPage() {
 
   const teams = useMemo(() => {
     const teamSet = new Set(players.map((p) => p.team));
-    return Array.from(teamSet).filter(t => t !== "N/A").sort();
+    return Array.from(teamSet).filter((t) => t !== "N/A").sort();
   }, [players]);
 
   const filteredPlayers = useMemo(() => {
@@ -333,10 +123,9 @@ export default function PlayerRankingsPage() {
       result = result.filter((p) => p.team === teamFilter);
     }
 
-    // 排序
     result = [...result].sort((a, b) => {
       let aVal: any, bVal: any;
-      
+
       if (sortKey === "name") {
         aVal = a.name;
         bVal = b.name;
@@ -388,32 +177,36 @@ export default function PlayerRankingsPage() {
       Probable: "#22c55e",
       "Day-To-Day": "#f97316",
     };
-    const color = colors[status] || "#888";
     return (
-      <span className="injury-indicator" style={{ backgroundColor: color }} title={status}>
+      <span className="injury-indicator" style={{ backgroundColor: colors[status] || "#888" }} title={status}>
         {status.charAt(0)}
       </span>
     );
   }
 
-  function formatStat(value: number, decimals: number = 1): string {
-    return value.toFixed(decimals);
+  function formatStat(value: number): string {
+    return value.toFixed(1);
   }
 
-  if (loading) {
+  function formatTime(isoString: string | null): string {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    return date.toLocaleString("zh-CN", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  if (loading && players.length === 0) {
     return (
       <div className="app">
         <Header />
         <main className="page-content">
           <div className="loading-container">
             <div className="loading-spinner">🏀</div>
-            <p className="loading-status">{loadingStatus}</p>
-            <p className="loading-note">
-              {t(
-                "正在从 Ball Don't Lie API 获取真实比赛数据，请稍候...",
-                "Fetching real game data from Ball Don't Lie API, please wait..."
-              )}
-            </p>
+            <p>{t("加载中...", "Loading...")}</p>
           </div>
         </main>
         <style jsx>{styles}</style>
@@ -421,7 +214,7 @@ export default function PlayerRankingsPage() {
     );
   }
 
-  if (error) {
+  if (error && players.length === 0) {
     return (
       <div className="app">
         <Header />
@@ -470,17 +263,19 @@ export default function PlayerRankingsPage() {
                   Averages
                 </button>
               </div>
-              <button onClick={loadData} className="refresh-btn">
-                🔄 {t("刷新", "Refresh")}
-              </button>
             </div>
           </div>
 
-          {/* 数据来源信息 */}
+          {/* 数据状态栏 */}
           <div className="data-source-bar">
-            <span className="live-indicator">⚡ LIVE DATA</span>
-            <span>{t(`基于最近 ${gamesLoaded} 场已完成比赛`, `Based on ${gamesLoaded} recent finished games`)}</span>
+            <span className="live-indicator">⚡ {t("实时数据", "LIVE DATA")}</span>
+            <span>{t(`${gamesLoaded} 场比赛`, `${gamesLoaded} games`)}</span>
             <span>{t(`${players.length} 名球员`, `${players.length} players`)}</span>
+            {lastUpdated && (
+              <span className="last-updated">
+                {t("更新于", "Updated")} {formatTime(lastUpdated)}
+              </span>
+            )}
           </div>
 
           {/* 过滤器 */}
@@ -526,8 +321,8 @@ export default function PlayerRankingsPage() {
               ))}
             </select>
             <div className="stats-info">
-              <span>👥 {filteredPlayers.length} {t("球员", "players")}</span>
-              <span>🏥 {injuredCount} {t("伤病", "injured")}</span>
+              <span>👥 {filteredPlayers.length}</span>
+              <span>🏥 {injuredCount}</span>
             </div>
           </div>
 
@@ -542,9 +337,7 @@ export default function PlayerRankingsPage() {
                     </div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("gamesPlayed")}>
-                    <div className="th-content">
-                      GP <SortIcon column="gamesPlayed" />
-                    </div>
+                    <div className="th-content">GP <SortIcon column="gamesPlayed" /></div>
                   </th>
                   <th className="col-stat">MIN</th>
                   <th className="col-stat">FGM</th>
@@ -552,44 +345,28 @@ export default function PlayerRankingsPage() {
                   <th className="col-stat">FTM</th>
                   <th className="col-stat">FTA</th>
                   <th className="col-stat" onClick={() => handleSort("fg3m")}>
-                    <div className="th-content">
-                      3PM <SortIcon column="fg3m" />
-                    </div>
+                    <div className="th-content">3PM <SortIcon column="fg3m" /></div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("reb")}>
-                    <div className="th-content">
-                      REB <SortIcon column="reb" />
-                    </div>
+                    <div className="th-content">REB <SortIcon column="reb" /></div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("ast")}>
-                    <div className="th-content">
-                      AST <SortIcon column="ast" />
-                    </div>
+                    <div className="th-content">AST <SortIcon column="ast" /></div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("stl")}>
-                    <div className="th-content">
-                      STL <SortIcon column="stl" />
-                    </div>
+                    <div className="th-content">STL <SortIcon column="stl" /></div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("blk")}>
-                    <div className="th-content">
-                      BLK <SortIcon column="blk" />
-                    </div>
+                    <div className="th-content">BLK <SortIcon column="blk" /></div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("tov")}>
-                    <div className="th-content">
-                      TO <SortIcon column="tov" />
-                    </div>
+                    <div className="th-content">TO <SortIcon column="tov" /></div>
                   </th>
                   <th className="col-stat" onClick={() => handleSort("pts")}>
-                    <div className="th-content">
-                      PTS <SortIcon column="pts" />
-                    </div>
+                    <div className="th-content">PTS <SortIcon column="pts" /></div>
                   </th>
                   <th className="col-fpts" onClick={() => handleSort("fptsAvg")}>
-                    <div className="th-content">
-                      FPTS <SortIcon column="fptsAvg" />
-                    </div>
+                    <div className="th-content">FPTS <SortIcon column="fptsAvg" /></div>
                   </th>
                 </tr>
               </thead>
@@ -599,20 +376,18 @@ export default function PlayerRankingsPage() {
                   return (
                     <tr key={player.id} className={player.injury ? "injured" : ""}>
                       <td className="col-rank">
-                        <span className="rank">{player.rank}</span>
+                        <span className={`rank ${player.rank <= 10 ? "top10" : player.rank <= 50 ? "top50" : ""}`}>
+                          {player.rank}
+                        </span>
                       </td>
                       <td className="col-player-info">
-                        <div className="player-avatar">
-                          {player.name.charAt(0)}
-                        </div>
+                        <div className="player-avatar">{player.name.charAt(0)}</div>
                         <div className="player-details">
                           <div className="player-name">
                             {player.name}
                             <InjuryBadge status={player.injury} />
                           </div>
-                          <div className="player-meta">
-                            {player.team} • {player.position}
-                          </div>
+                          <div className="player-meta">{player.team} • {player.position}</div>
                         </div>
                       </td>
                       <td className="col-stat">{player.gamesPlayed}</td>
@@ -645,7 +420,7 @@ export default function PlayerRankingsPage() {
           {totalPages > 1 && (
             <div className="pagination">
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
-                ← {t("上一页", "Prev")}
+                ← Prev
               </button>
               <div className="page-numbers">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -664,21 +439,16 @@ export default function PlayerRankingsPage() {
                 })}
               </div>
               <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
-                {t("下一页", "Next")} →
+                Next →
               </button>
             </div>
           )}
 
-          {/* Fantasy 计分说明 */}
+          {/* 计分说明 */}
           <div className="scoring-note">
-            <h4>⚡ Fantasy Scoring (ESPN Default)</h4>
+            <h4>⚡ Fantasy Scoring</h4>
             <p>PTS: +1 | REB: +1 | AST: +1 | STL: +2 | BLK: +2 | 3PM: +1 | TO: -1</p>
-            <p className="data-info">
-              {t(
-                "📊 数据来源: Ball Don't Lie API (ALL-STAR) • 实时更新",
-                "📊 Data Source: Ball Don't Lie API (ALL-STAR) • Live Updates"
-              )}
-            </p>
+            <p className="data-info">📊 Ball Don't Lie API • {t("每30分钟自动更新", "Auto-updates every 30 min")}</p>
           </div>
         </div>
       </main>
@@ -703,7 +473,7 @@ const styles = `
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     background: #fff;
     padding: 16px 20px;
     border-radius: 8px;
@@ -730,7 +500,6 @@ const styles = `
     color: #666;
     font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s;
   }
 
   .header-tabs .tab.active {
@@ -766,19 +535,6 @@ const styles = `
     color: white;
   }
 
-  .refresh-btn {
-    padding: 8px 16px;
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  .refresh-btn:hover {
-    background: #e0e0e0;
-  }
-
   .data-source-bar {
     display: flex;
     align-items: center;
@@ -786,17 +542,20 @@ const styles = `
     padding: 10px 16px;
     background: linear-gradient(90deg, #065f46 0%, #047857 100%);
     border-radius: 6px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     color: white;
     font-size: 13px;
+    flex-wrap: wrap;
   }
 
   .live-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
     font-weight: 600;
     animation: pulse 2s infinite;
+  }
+
+  .last-updated {
+    margin-left: auto;
+    opacity: 0.9;
   }
 
   @keyframes pulse {
@@ -807,7 +566,7 @@ const styles = `
   .filters {
     display: flex;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     flex-wrap: wrap;
     align-items: center;
   }
@@ -820,11 +579,7 @@ const styles = `
     background: #fff;
     border: 1px solid #ddd;
     border-radius: 6px;
-    min-width: 220px;
-  }
-
-  .search-icon {
-    color: #999;
+    min-width: 200px;
   }
 
   .search-box input {
@@ -832,7 +587,6 @@ const styles = `
     border: none;
     outline: none;
     font-size: 14px;
-    color: #333;
   }
 
   .filter-select {
@@ -841,13 +595,11 @@ const styles = `
     border: 1px solid #ddd;
     border-radius: 6px;
     font-size: 14px;
-    color: #333;
-    cursor: pointer;
   }
 
   .stats-info {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     margin-left: auto;
     font-size: 13px;
     color: #666;
@@ -867,12 +619,11 @@ const styles = `
   }
 
   .players-table th {
-    padding: 12px 8px;
+    padding: 12px 6px;
     text-align: center;
     font-size: 11px;
     font-weight: 600;
     color: #666;
-    text-transform: uppercase;
     background: #fafafa;
     border-bottom: 1px solid #eee;
     cursor: pointer;
@@ -887,7 +638,7 @@ const styles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 2px;
   }
 
   .sort-icon {
@@ -900,13 +651,8 @@ const styles = `
     color: #0066cc;
   }
 
-  .col-player {
-    text-align: left !important;
-    padding-left: 16px !important;
-  }
-
   .players-table td {
-    padding: 10px 8px;
+    padding: 8px 6px;
     text-align: center;
     font-size: 13px;
     color: #333;
@@ -923,7 +669,7 @@ const styles = `
 
   .col-rank {
     width: 40px;
-    padding-left: 12px !important;
+    padding-left: 8px !important;
   }
 
   .rank {
@@ -939,31 +685,36 @@ const styles = `
     color: #666;
   }
 
+  .rank.top10 {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .rank.top50 {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+
   .col-player-info {
     display: flex;
     align-items: center;
     gap: 10px;
     text-align: left !important;
-    min-width: 180px;
+    min-width: 160px;
   }
 
   .player-avatar {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     flex-shrink: 0;
-  }
-
-  .player-details {
-    flex: 1;
-    min-width: 0;
   }
 
   .player-name {
@@ -978,23 +729,23 @@ const styles = `
   .player-meta {
     font-size: 11px;
     color: #888;
-    margin-top: 2px;
+    margin-top: 1px;
   }
 
   .injury-indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    font-size: 8px;
+    font-weight: 700;
+    color: white;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    font-size: 9px;
-    font-weight: 700;
-    color: white;
   }
 
   .col-stat {
-    min-width: 45px;
+    min-width: 40px;
     color: #555;
   }
 
@@ -1008,7 +759,7 @@ const styles = `
   }
 
   .col-fpts {
-    min-width: 70px;
+    min-width: 60px;
     background: #f0fdf4;
   }
 
@@ -1016,7 +767,6 @@ const styles = `
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
   }
 
   .fpts-total {
@@ -1035,7 +785,7 @@ const styles = `
     justify-content: center;
     align-items: center;
     gap: 8px;
-    margin-top: 20px;
+    margin-top: 16px;
   }
 
   .pagination button {
@@ -1044,18 +794,12 @@ const styles = `
     border: 1px solid #ddd;
     border-radius: 6px;
     font-size: 13px;
-    color: #333;
     cursor: pointer;
   }
 
   .pagination button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  .pagination button:hover:not(:disabled) {
-    border-color: #0066cc;
-    color: #0066cc;
   }
 
   .page-numbers {
@@ -1075,8 +819,8 @@ const styles = `
   }
 
   .scoring-note {
-    margin-top: 20px;
-    padding: 16px 20px;
+    margin-top: 16px;
+    padding: 14px 18px;
     background: #fff;
     border-radius: 8px;
     border-left: 4px solid #0066cc;
@@ -1084,9 +828,7 @@ const styles = `
 
   .scoring-note h4 {
     font-size: 14px;
-    font-weight: 600;
-    color: #1a1a1a;
-    margin: 0 0 8px 0;
+    margin: 0 0 6px 0;
   }
 
   .scoring-note p {
@@ -1096,10 +838,9 @@ const styles = `
   }
 
   .scoring-note .data-info {
-    margin-top: 8px;
+    margin-top: 6px;
     font-size: 12px;
     color: #16a34a;
-    font-weight: 500;
   }
 
   .loading-container, .error-container {
@@ -1112,20 +853,6 @@ const styles = `
   .loading-spinner {
     font-size: 48px;
     animation: bounce 1s infinite;
-    margin-bottom: 16px;
-  }
-
-  .loading-status {
-    font-size: 14px;
-    color: #333;
-    margin: 0 0 8px 0;
-    font-weight: 500;
-  }
-
-  .loading-note {
-    font-size: 12px;
-    color: #888;
-    margin: 0;
   }
 
   @keyframes bounce {
@@ -1146,7 +873,7 @@ const styles = `
   @media (max-width: 768px) {
     .page-header {
       flex-direction: column;
-      gap: 16px;
+      gap: 12px;
     }
 
     .header-right {
@@ -1156,8 +883,12 @@ const styles = `
 
     .data-source-bar {
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       text-align: center;
+    }
+
+    .last-updated {
+      margin-left: 0;
     }
 
     .filters {
