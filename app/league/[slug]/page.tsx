@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import {
   supabase,
-  joinLeague,
   startDraft,
   subscribeToLeague,
   type League,
@@ -105,8 +104,20 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
     setJoining(true);
 
     try {
-      const team = await joinLeague(leagueId, teamName.trim(), user.id);
-      setMyTeam(team);
+      const res = await fetch("/api/league/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leagueId,
+          teamName: teamName.trim(),
+          userId: user.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "加入失败");
+      }
+      setMyTeam(data.team);
       setShowJoinModal(false);
       setTeamName("");
       await loadLeagueInfo();
