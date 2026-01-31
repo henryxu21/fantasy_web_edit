@@ -17,21 +17,14 @@ export async function POST(request: Request) {
 
     const trimmedName = name.trim();
 
-    // Generate slug from name
-    const slug = trimmedName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40);
-
     // Create league using admin client (bypasses RLS)
     const { data: league, error: createError } = await supabaseAdmin
       .from("leagues")
       .insert({
         name: trimmedName,
-        slug,
-        owner_id: userId,
-        visibility: "public",
+        commissioner_id: userId,
+        max_teams: 10,
+        draft_type: "snake",
       })
       .select()
       .single();
@@ -41,11 +34,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: createError.message }, { status: 500 });
     }
 
-    // Creator automatically becomes owner member
-    await supabaseAdmin.from("league_members").insert({
+    // Create draft settings
+    await supabaseAdmin.from("draft_settings").insert({
       league_id: league.id,
-      user_id: userId,
-      role: "owner",
+      draft_type: "snake",
     });
 
     return NextResponse.json({ status: "success", league });

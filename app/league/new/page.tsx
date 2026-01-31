@@ -50,7 +50,7 @@ export default function NewLeaguePage() {
       }
 
       // 跳转到联赛页面
-      router.push(`/league/${data.league.slug}`);
+      router.push(`/league/${data.league.id}`);
     } catch (err: any) {
       console.error('Create league error:', err);
       setError(err.message || "创建失败");
