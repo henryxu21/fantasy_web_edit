@@ -310,9 +310,13 @@ export async function createLeague(data: {
 /**
  * 加入联赛
  */
-export async function joinLeague(leagueId: string, teamName: string) {
-  const user = await getCurrentUser()
-  if (!user) throw new Error('Not authenticated')
+export async function joinLeague(leagueId: string, teamName: string, userId?: string) {
+  let uid = userId
+  if (!uid) {
+    const user = await getCurrentUser()
+    if (!user) throw new Error('Not authenticated')
+    uid = user.id
+  }
 
   // 1. 检查联赛是否存在和是否已满
   const { data: league, error: leagueError } = await supabase
@@ -334,7 +338,7 @@ export async function joinLeague(leagueId: string, teamName: string) {
     .from('teams')
     .select('id')
     .eq('league_id', leagueId)
-    .eq('user_id', user.id)
+    .eq('user_id', uid)
     .single()
 
   if (existingTeam) {
@@ -346,7 +350,7 @@ export async function joinLeague(leagueId: string, teamName: string) {
     .from('teams')
     .insert({
       league_id: leagueId,
-      user_id: user.id,
+      user_id: uid,
       team_name: teamName,
       draft_position: currentTeams + 1,
     })
@@ -360,9 +364,13 @@ export async function joinLeague(leagueId: string, teamName: string) {
 /**
  * 开始选秀
  */
-export async function startDraft(leagueId: string) {
-  const user = await getCurrentUser()
-  if (!user) throw new Error('Not authenticated')
+export async function startDraft(leagueId: string, userId?: string) {
+  let uid = userId
+  if (!uid) {
+    const user = await getCurrentUser()
+    if (!user) throw new Error('Not authenticated')
+    uid = user.id
+  }
 
   // 1. 检查是否是管理员
   const { data: league, error: leagueError } = await supabase
@@ -372,7 +380,7 @@ export async function startDraft(leagueId: string) {
     .single()
 
   if (leagueError) throw leagueError
-  if (league.commissioner_id !== user.id) {
+  if (league.commissioner_id !== uid) {
     throw new Error('Only commissioner can start the draft')
   }
 

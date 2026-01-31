@@ -2,15 +2,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { 
+import {
   supabase,
-  getCurrentUser, 
-  joinLeague, 
+  joinLeague,
   startDraft,
   subscribeToLeague,
   type League,
   type Team
 } from "@/lib/supabase";
+import { getSessionUser } from "@/lib/store";
 
 // 先导入选秀房间组件（稍后创建）
 // import DraftRoom from "@/components/DraftRoom";
@@ -47,7 +47,7 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
 
   async function init() {
     try {
-      const user = await getCurrentUser();
+      const user = getSessionUser();
       setCurrentUser(user);
       await loadLeagueInfo();
     } catch (err) {
@@ -80,7 +80,7 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
       setTeams(teamsData || []);
 
       // 3. 找到我的队伍
-      const user = await getCurrentUser();
+      const user = getSessionUser();
       if (user) {
         const myTeamData = teamsData?.find(t => t.user_id === user.id);
         setMyTeam(myTeamData || null);
@@ -96,10 +96,16 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
       return;
     }
 
+    const user = getSessionUser();
+    if (!user) {
+      alert("请先登录");
+      return;
+    }
+
     setJoining(true);
-    
+
     try {
-      const team = await joinLeague(leagueId, teamName.trim());
+      const team = await joinLeague(leagueId, teamName.trim(), user.id);
       setMyTeam(team);
       setShowJoinModal(false);
       setTeamName("");
@@ -117,10 +123,16 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
       return;
     }
 
+    const user = getSessionUser();
+    if (!user) {
+      alert("请先登录");
+      return;
+    }
+
     setStarting(true);
-    
+
     try {
-      await startDraft(leagueId);
+      await startDraft(leagueId, user.id);
       await loadLeagueInfo();
     } catch (err: any) {
       console.error("Start draft error:", err);
