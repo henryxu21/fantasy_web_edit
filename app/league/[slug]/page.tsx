@@ -2,15 +2,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { 
+import {
   supabase,
-  getCurrentUser, 
-  joinLeague, 
-  startDraft,
+  getCurrentUser,
   subscribeToLeague,
   type League,
   type Team
 } from "@/lib/supabase";
+import { getLeagueById, getTeamsByLeagueId, joinLeagueAction, startDraftAction } from "./actions";
 
 // 先导入选秀房间组件（稍后创建）
 // import DraftRoom from "@/components/DraftRoom";
@@ -59,30 +58,26 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
 
   async function loadLeagueInfo() {
     try {
-      // 1. 获取联赛信息
-      const { data: leagueData, error: leagueError } = await supabase
-        .from('leagues')
-        .select('*')
-        .eq('id', leagueId)
-        .single();
+      // 1. 获取联赛信息 (using server action to bypass RLS)
+      const leagueResult = await getLeagueById(leagueId);
+      if (!leagueResult.ok) {
+        console.error("Failed to load league:", leagueResult.error);
+        return;
+      }
+      setLeague(leagueResult.league);
 
-      if (leagueError) throw leagueError;
-      setLeague(leagueData);
-
-      // 2. 获取所有队伍
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('league_id', leagueId)
-        .order('draft_position', { ascending: true });
-
-      if (teamsError) throw teamsError;
-      setTeams(teamsData || []);
+      // 2. 获取所有队伍 (using server action to bypass RLS)
+      const teamsResult = await getTeamsByLeagueId(leagueId);
+      if (!teamsResult.ok) {
+        console.error("Failed to load teams:", teamsResult.error);
+        return;
+      }
+      setTeams(teamsResult.teams);
 
       // 3. 找到我的队伍
       const user = await getCurrentUser();
       if (user) {
-        const myTeamData = teamsData?.find(t => t.user_id === user.id);
+        const myTeamData = teamsResult.teams?.find((t: Team) => t.user_id === user.id);
         setMyTeam(myTeamData || null);
       }
     } catch (err) {
@@ -96,11 +91,20 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
       return;
     }
 
+    if (!currentUser) {
+      alert("请先登录");
+      return;
+    }
+
     setJoining(true);
-    
+
     try {
-      const team = await joinLeague(leagueId, teamName.trim());
-      setMyTeam(team);
+      const result = await joinLeagueAction(leagueId, teamName.trim(), currentUser.id);
+      if (!result.ok) {
+        alert(result.error || "加入失败");
+        return;
+      }
+      setMyTeam(result.team);
       setShowJoinModal(false);
       setTeamName("");
       await loadLeagueInfo();
@@ -117,10 +121,19 @@ export default function LeaguePage({ params }: { params: { slug: string } }) {
       return;
     }
 
+    if (!currentUser) {
+      alert("请先登录");
+      return;
+    }
+
     setStarting(true);
-    
+
     try {
-      await startDraft(leagueId);
+      const result = await startDraftAction(leagueId, currentUser.id);
+      if (!result.ok) {
+        alert(result.error || "开始选秀失败");
+        return;
+      }
       await loadLeagueInfo();
     } catch (err: any) {
       console.error("Start draft error:", err);
