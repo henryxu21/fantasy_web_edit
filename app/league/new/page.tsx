@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createLeague } from "@/lib/supabase";
+import { createLeagueAction } from "./actions";
 
 export default function NewLeaguePage() {
   const router = useRouter();
@@ -26,14 +26,16 @@ export default function NewLeaguePage() {
     setSubmitting(true);
     setError(null);
 
-    try {
-      const league = await createLeague({ name });
-      // 跳转到联赛页面
-      router.push(`/league/${league.id}`);
-    } catch (err: any) {
-      setError(err.message || "创建失败");
+    const result = await createLeagueAction(name);
+
+    if (!result.ok) {
+      setError(result.error);
       setSubmitting(false);
+      return;
     }
+
+    // 跳转到联赛页面
+    router.push(`/league/${result.league.id}`);
   }
 
   return (
