@@ -26,7 +26,11 @@ export default function NewInsightPage() {
       try {
         setLoadingLeagues(true);
         const data: League[] = await listLeagues();
-        setLeagues(data.map((l) => ({ slug: l.slug, name: l.name })));
+        setLeagues(
+          data
+            .map((l) => ({ slug: (l.slug || l.id || "").toString(), name: l.name }))
+            .filter((l) => l.slug.length > 0)
+        );
       } catch (e) {
         console.error(e);
         setLeagues([]);
