@@ -553,8 +553,8 @@ export default function LeaguePage({ params }: { params: Promise<{ slug: string 
                   {name[0]?.toUpperCase()}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>{name}</div>
-                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                  <div style={{ fontWeight: 600, color: '#0f172a' }}>{name}</div>
+                  <div style={{ fontSize: '12px', color: '#475569' }}>
                     {m.team_name || "队伍"}
                   </div>
                 </div>
