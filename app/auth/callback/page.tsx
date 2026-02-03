@@ -14,19 +14,30 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handle = async () => {
       try {
-        const { data, error } = await supabase.auth.getSessionFromUrl({
-          storeSession: true,
-        });
-
-        if (error) {
-          setStatus(error.message);
-          return;
-        }
-
         const params = new URLSearchParams(window.location.search);
         const next = params.get("next");
+        const code = params.get("code");
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
         const type = hashParams.get("type");
+
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            setStatus(error.message);
+            return;
+          }
+        } else if (hashParams.get("access_token") && hashParams.get("refresh_token")) {
+          const accessToken = hashParams.get("access_token") as string;
+          const refreshToken = hashParams.get("refresh_token") as string;
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) {
+            setStatus(error.message);
+            return;
+          }
+        }
 
         if (next) {
           router.replace(next);
@@ -38,6 +49,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
+        const { data } = await supabase.auth.getSession();
         if (data?.session) {
           router.replace("/");
         } else {
