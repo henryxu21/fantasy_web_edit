@@ -78,7 +78,7 @@ export default function DraftRoom({ leagueId, myTeam }: { leagueId: string; myTe
     setError(null);
     try {
       await pickPlayer(leagueId, myTeam.id, {
-        id: player.id,
+        id: Number(player.id),
         name: player.name,
         team: player.team,
         position: player.position,
