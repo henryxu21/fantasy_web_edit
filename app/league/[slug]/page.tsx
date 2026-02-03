@@ -360,10 +360,11 @@ export default function LeaguePage({ params }: { params: Promise<{ slug: string 
         padding: '24px',
         borderRadius: '12px',
         marginBottom: '24px',
-        borderLeft: '4px solid #3b82f6'
+        borderLeft: '4px solid #3b82f6',
+        color: '#0f172a'
       }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>📢 联赛公告</h3>
-        <p style={{ margin: 0, color: '#64748b', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>
           欢迎来到联赛！准备好开始你的Fantasy 篮球之旅了吗?
         </p>
         {canStartDraft && (
@@ -394,7 +395,7 @@ export default function LeaguePage({ params }: { params: Promise<{ slug: string 
           alignItems: 'center',
           marginBottom: '20px'
         }}>
-          <h3 style={{ margin: 0, fontSize: '20px' }}>
+          <h3 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>
             👥 参赛队伍 ({teams.length}/{league.max_teams})
           </h3>
           {canStartDraft && (
@@ -499,11 +500,11 @@ export default function LeaguePage({ params }: { params: Promise<{ slug: string 
                 cursor: myTeam ? 'default' : 'pointer',
                 flexDirection: 'column',
                 gap: '8px',
-                color: '#94a3b8'
+                color: '#64748b'
               }}
             >
               <span style={{ fontSize: '32px' }}>➕</span>
-              <span style={{ fontSize: '14px' }}>等待加入</span>
+              <span style={{ fontSize: '14px', color: '#64748b' }}>等待加入</span>
             </div>
           ))}
         </div>
@@ -522,7 +523,7 @@ export default function LeaguePage({ params }: { params: Promise<{ slug: string 
           alignItems: 'center',
           marginBottom: '16px'
         }}>
-          <h3 style={{ margin: 0, fontSize: '20px' }}>👥 成员</h3>
+          <h3 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>👥 成员</h3>
           <Link href={`/league/${leagueId}/members`} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>
             查看全部 →
           </Link>
@@ -580,7 +581,7 @@ export default function LeaguePage({ params }: { params: Promise<{ slug: string 
           alignItems: 'center',
           marginBottom: '12px'
         }}>
-          <h3 style={{ margin: 0, fontSize: '20px' }}>💬 联赛聊天</h3>
+          <h3 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>💬 联赛聊天</h3>
           <Link href={`/league/${leagueId}/board`} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>
             进入讨论区 →
           </Link>
