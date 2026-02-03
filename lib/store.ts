@@ -206,10 +206,11 @@
      }
    
      const authUser = authData.user;
-     if (!authUser) {
+     if (!authUser || !authData.session) {
        return {
          ok: false as const,
-         error: "Signup requires email confirmation. Please check your inbox.",
+         error:
+           "Signup requires email confirmation. Please check your inbox, then log in.",
        };
      }
    
@@ -225,6 +226,44 @@
        .single();
    
      if (userError) {
+       // If the email already exists in users, recover by linking to the auth user.
+       const { data: existingByEmail } = await supabase
+         .from("users")
+         .select("*")
+         .eq("email", email)
+         .single();
+   
+       if (existingByEmail) {
+         if (existingByEmail.id !== authUser.id) {
+           const { error: relinkError } = await supabase
+             .from("users")
+             .update({
+               id: authUser.id,
+               name,
+               username,
+             })
+             .eq("email", email);
+   
+           if (relinkError) {
+             return { ok: false as const, error: "User exists but could not link to Auth user." };
+           }
+   
+           const { data: relinkedUser } = await supabase
+             .from("users")
+             .select("*")
+             .eq("id", authUser.id)
+             .single();
+   
+           if (relinkedUser) {
+             setSessionUser(relinkedUser);
+             return { ok: true as const, user: relinkedUser };
+           }
+         } else {
+           setSessionUser(existingByEmail);
+           return { ok: true as const, user: existingByEmail };
+         }
+       }
+   
        return { ok: false as const, error: userError.message };
      }
    
@@ -254,6 +293,42 @@
        .single();
    
      if (userError || !user) {
+       // If profile missing, try to recover by email
+       const { data: existingByEmail } = await supabase
+         .from("users")
+         .select("*")
+         .eq("email", email)
+         .single();
+   
+       if (existingByEmail) {
+         if (existingByEmail.id !== authUser.id) {
+           const username = email.split("@")[0];
+           const { error: relinkError } = await supabase
+             .from("users")
+             .update({
+               id: authUser.id,
+               name: authUser.user_metadata?.name || existingByEmail.name || username,
+               username: authUser.user_metadata?.username || existingByEmail.username || username,
+             })
+             .eq("email", email);
+   
+           if (relinkError) {
+             return { ok: false as const, error: "User profile could not be linked." };
+           }
+         }
+   
+         const { data: relinkedUser } = await supabase
+           .from("users")
+           .select("*")
+           .eq("id", authUser.id)
+           .single();
+   
+         if (relinkedUser) {
+           setSessionUser(relinkedUser);
+           return { ok: true as const, user: relinkedUser };
+         }
+       }
+   
        const username = email.split("@")[0];
        const { data: createdUser, error: createError } = await supabase
          .from("users")
