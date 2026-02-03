@@ -20,7 +20,7 @@ export default function DraftRoom({ leagueId, myTeam }: { leagueId: string; myTe
   const [currentTeam, setCurrentTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [pickingId, setPickingId] = useState<number | null>(null);
+  const [pickingId, setPickingId] = useState<number | string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export default function DraftRoom({ leagueId, myTeam }: { leagueId: string; myTe
                 </div>
                 <button
                   onClick={() => handlePick(p)}
-                  disabled={!isMyTurn || pickingId === p.id}
+                  disabled={!isMyTurn || (pickingId !== null && String(pickingId) === String(p.id))}
                   style={{
                     padding: "6px 12px",
                     borderRadius: 8,
