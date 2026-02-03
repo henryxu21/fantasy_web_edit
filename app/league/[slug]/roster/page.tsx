@@ -50,7 +50,7 @@ export default function RosterPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeam, setMyTeam] = useState<Team | null>(null);
   const [roster, setRoster] = useState<any[]>([]);
-  const [rosteredIds, setRosteredIds] = useState<number[]>([]);
+  const [rosteredIds, setRosteredIds] = useState<(number | string)[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
